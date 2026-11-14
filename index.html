@@ -135,7 +135,7 @@
 <body>
 <div id="app">
   <div id="hud">
-    <span class="stat">❤️ <span id="hudVies">20</span></span>
+    <span class="stat">❤️ <span id="hudVies">15</span></span>
     <span class="stat">💰 <span id="hudArgent">150</span></span>
     <span class="stat">🌊 <span id="hudVague">0</span></span>
     <button id="btnVitesse" title="Vitesse">1×</button>
@@ -210,10 +210,10 @@ const NIVEAU_MAX = 5;
    speed = cases par seconde, r = rayon (en cases), money = argent à la mort,
    vies  = vies retirées s'il atteint la base                            */
 const ZOMBIES = {
-  normal: { nom: 'Zombie',  pv: 40,  speed: 1.0,  money: 6,  vies: 1, r: 0.32, coul: '#7ec850', habit: '#6b4a2f' },
-  coureur:{ nom: 'Coureur', pv: 26,  speed: 1.9,  money: 5,  vies: 1, r: 0.28, coul: '#d3d94e', habit: '#7a3030' },
-  tank:   { nom: 'Tank',    pv: 160, speed: 0.55, money: 16, vies: 2, r: 0.44, coul: '#4a7a3a', habit: '#3a3f4a' },
-  boss:   { nom: 'Boss',    pv: 650, speed: 0.5,  money: 80, vies: 5, r: 0.58, coul: '#9b59b6', habit: '#2c2c34' },
+  normal: { nom: 'Zombie',  pv: 50,  speed: 1.0,  money: 6,  vies: 1, r: 0.32, coul: '#7ec850', habit: '#6b4a2f' },
+  coureur:{ nom: 'Coureur', pv: 34,  speed: 1.9,  money: 5,  vies: 1, r: 0.28, coul: '#d3d94e', habit: '#7a3030' },
+  tank:   { nom: 'Tank',    pv: 200, speed: 0.55, money: 16, vies: 2, r: 0.44, coul: '#4a7a3a', habit: '#3a3f4a' },
+  boss:   { nom: 'Boss',    pv: 800, speed: 0.5,  money: 80, vies: 5, r: 0.58, coul: '#9b59b6', habit: '#2c2c34' },
 };
 
 /* Assombrit ou éclaircit une couleur #rrggbb (f = 0.6 -> plus sombre) */
@@ -232,7 +232,7 @@ let cell = 40;                  // taille d'une case en pixels CSS
 let dpr = 1;
 
 let etat = 'titre';             // titre | jeu | fin
-let argent = 150, vies = 20, vague = 0, score = 0, tues = 0;
+let argent = 150, vies = 15, vague = 0, score = 0, tues = 0;
 let tours = [];                 // tours posées
 let zombies = [];               // zombies en vie
 let projectiles = [];           // projectiles en vol
@@ -344,16 +344,19 @@ const SON_TIR = { arbalete: () => bip(880, 0.05, 'square', 0.02),
    Les vagues sont infinies : ça monte, ça monte...            */
 function compositionVague(n) {
   const liste = [];
-  const nb = 6 + Math.floor(n * 1.7);
+  const nb = 8 + Math.floor(n * 2.2);
   for (let i = 0; i < nb; i++) {
     let t = 'normal';
-    if (n >= 3 && i % 4 === 2) t = 'coureur';
-    if (n >= 5 && i % 6 === 5) t = 'tank';
-    if (n >= 8 && i % 7 === 3) t = 'coureur';
-    if (n >= 12 && i % 9 === 6) t = 'tank';
+    if (n >= 2 && i % 4 === 2) t = 'coureur';
+    if (n >= 4 && i % 6 === 5) t = 'tank';
+    if (n >= 7 && i % 7 === 3) t = 'coureur';
+    if (n >= 10 && i % 9 === 6) t = 'tank';
     liste.push(t);
   }
-  if (n % 10 === 0) liste.push('boss');   // un boss toutes les 10 vagues
+  if (n % 10 === 0) {             // un boss toutes les 10 vagues
+    liste.push('boss');
+    if (n >= 20) liste.push('boss');   // deux boss à partir de la vague 20
+  }
   return liste;
 }
 
@@ -513,8 +516,8 @@ document.getElementById('btnSon').onclick = (e) => {
 /* ---------------- Mécanique du jeu ---------------- */
 function faireApparaitre(type) {
   const def = ZOMBIES[type];
-  // les PV montent avec les vagues : +22% par vague
-  const pvMax = Math.round(def.pv * (1 + (vague - 1) * 0.22));
+  // les PV montent avec les vagues : +30% par vague
+  const pvMax = Math.round(def.pv * (1 + (vague - 1) * 0.30));
   zombies.push({
     type, x: cheminPx[0][0], y: cheminPx[0][1],
     pv: pvMax, pvMax,
@@ -678,13 +681,13 @@ function boucle(t) {
     minuteurSpawn -= dt;
     if (minuteurSpawn <= 0) {
       faireApparaitre(fileSpawn.shift());
-      minuteurSpawn = Math.max(0.35, 1.05 - vague * 0.03);
+      minuteurSpawn = Math.max(0.28, 0.95 - vague * 0.04);
     }
   }
   // fin de vague -> compte à rebours avant la suivante
   if (vagueEnCours && !fileSpawn.length && !zombies.length) {
     vagueEnCours = false;
-    compteARebours = 10;
+    compteARebours = 7;
     majBoutonVague();
   }
   if (!vagueEnCours) {
@@ -1324,7 +1327,7 @@ function partieTerminee() {
   document.getElementById('btnRejouer').onclick = () => { initSon(); nouvellePartie(); };
 }
 function nouvellePartie() {
-  argent = 150; vies = 20; vague = 0; score = 0; tues = 0;
+  argent = 150; vies = 15; vague = 0; score = 0; tues = 0;
   tours = []; zombies = []; projectiles = []; eclairs = []; textes = [];
   particules = []; morts = []; secousse = 0;
   fileSpawn = []; vagueEnCours = false; compteARebours = 5;
