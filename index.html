@@ -575,7 +575,7 @@ function faireApparaitre(type) {
   const def = ZOMBIES[type];
   // La difficulté reste progressive au début, puis s'accélère après la vague 4.
   const palierInitial = Math.min(vague - 1, 3) * 0.40;
-  const palierTardif = Math.max(0, vague - 4) * 0.55;
+  const palierTardif = Math.max(0, vague - 4) * 0.35;
   const pvMax = Math.round(def.pv * (1 + palierInitial + palierTardif));
   zombies.push({
     type, x: cheminPx[0][0], y: cheminPx[0][1],
