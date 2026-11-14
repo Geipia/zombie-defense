@@ -125,6 +125,10 @@
     font-size:19px; font-weight:800; letter-spacing:1px; padding:14px 46px; cursor:pointer;
     box-shadow:0 4px 0 #5e9430, 0 8px 20px rgba(0,0,0,.5);
   }
+  #ecran button.secondaire{
+    background:#243628; color:var(--texte); font-size:15px; padding:11px 30px;
+    box-shadow:0 3px 0 #16281b;
+  }
   #ecran button:active{ transform:translateY(3px); box-shadow:none; }
 </style>
 </head>
@@ -246,6 +250,29 @@ let choixPose = null;           // type de tour en cours de pose (armé via le m
 let tourSel = null;             // tour sélectionnée sur la carte
 let record = +(localStorage.getItem('zd_record') || 0);
 
+/* ---------------- Sauvegarde de la partie en cours ----------------
+   La partie est enregistrée dans le navigateur : fermer et rouvrir
+   le jeu permet de reprendre là où on en était (au début de vague). */
+const CLE_SAVE = 'zd_save';
+function sauvegarder() {
+  if (etat !== 'jeu') return;
+  const data = {
+    argent, vies, vague, score, tues, son,
+    tours: tours.map(t => ({ type: t.type, c: t.c, r: t.r, niveau: t.niveau })),
+  };
+  try { localStorage.setItem(CLE_SAVE, JSON.stringify(data)); } catch (e) {}
+}
+function lireSauvegarde() {
+  try {
+    const d = JSON.parse(localStorage.getItem(CLE_SAVE) || 'null');
+    if (d && d.vague > 0 && Array.isArray(d.tours)) return d;
+  } catch (e) {}
+  return null;
+}
+function effacerSauvegarde() { try { localStorage.removeItem(CLE_SAVE); } catch (e) {} }
+window.addEventListener('pagehide', sauvegarder);
+document.addEventListener('visibilitychange', () => { if (document.hidden) sauvegarder(); });
+
 /* ---------------- Réglage de la taille du canvas ---------------- */
 function redimensionner() {
   const wrap = document.getElementById('cvwrap');
@@ -338,6 +365,7 @@ function lancerVague() {
   compteARebours = 0;
   majBoutonVague();
   majHud();
+  sauvegarder();
   bip(300, 0.3, 'sawtooth', 0.05);
 }
 
@@ -373,7 +401,7 @@ cv.addEventListener('pointerdown', (e) => {
       tours.push({ type: choixPose, c, r, x, y, niveau: 1, recharge: 0, angle: -Math.PI / 2, recul: 0 });
       bip(500, 0.1, 'triangle', 0.05);
       choixPose = null; majShop();
-      majHud();
+      majHud(); sauvegarder();
     } else {
       bip(160, 0.15, 'square', 0.04);   // case invalide
     }
@@ -415,7 +443,7 @@ document.getElementById('btnAmeliorer').onclick = () => {
   if (tourSel.niveau < NIVEAU_MAX && argent >= prix) {
     argent -= prix; tourSel.niveau++;
     bip(700, 0.12, 'triangle', 0.05);
-    ouvrirPanneau(tourSel); majHud(); majShop();
+    ouvrirPanneau(tourSel); majHud(); majShop(); sauvegarder();
   }
 };
 document.getElementById('btnVendre').onclick = () => {
@@ -423,7 +451,7 @@ document.getElementById('btnVendre').onclick = () => {
   argent += Math.round(investi(tourSel) * 0.7);
   tours = tours.filter(t => t !== tourSel);
   bip(350, 0.1, 'triangle', 0.04);
-  fermerPanneau(); majHud(); majShop();
+  fermerPanneau(); majHud(); majShop(); sauvegarder();
 };
 
 /* ---------------- Le magasin ---------------- */
@@ -1246,6 +1274,7 @@ function dessinerZombie(z) {
 const ecran = document.getElementById('ecran');
 function ecranTitre() {
   etat = 'titre';
+  const save = lireSauvegarde();
   ecran.classList.remove('hidden');
   ecran.innerHTML =
     '<h1>🧟 ZOMBIE<br>DEFENSE</h1>' +
@@ -1253,11 +1282,33 @@ function ecranTitre() {
     'Pose des arbalètes, des canons, du givre et des bobines tesla.<br>' +
     'Chaque zombie tué rapporte de l\'argent. Tiens le plus longtemps possible !</div>' +
     (record ? '<div class="record">🏆 Record : vague ' + record + '</div>' : '') +
-    '<button id="btnJouer">JOUER</button>';
-  document.getElementById('btnJouer').onclick = () => { initSon(); nouvellePartie(); };
+    (save ? '<button id="btnReprendre">▶ REPRENDRE · VAGUE ' + (save.vague + 1) + '</button>' : '') +
+    '<button id="btnJouer"' + (save ? ' class="secondaire"' : '') + '>' + (save ? 'NOUVELLE PARTIE' : 'JOUER') + '</button>';
+  document.getElementById('btnJouer').onclick = () => { initSon(); effacerSauvegarde(); nouvellePartie(); };
+  if (save) document.getElementById('btnReprendre').onclick = () => { initSon(); reprendrePartie(); };
+}
+function reprendrePartie() {
+  const d = lireSauvegarde();
+  if (!d) { nouvellePartie(); return; }
+  argent = d.argent; vies = d.vies; vague = d.vague; score = d.score; tues = d.tues;
+  son = d.son !== false;
+  document.getElementById('btnSon').textContent = son ? '🔊' : '🔇';
+  tours = d.tours.map(t => {
+    const [x, y] = centreCase(t.c, t.r);
+    return { type: t.type, c: t.c, r: t.r, x, y, niveau: t.niveau, recharge: 0, angle: -Math.PI / 2, recul: 0 };
+  });
+  zombies = []; projectiles = []; eclairs = []; textes = [];
+  particules = []; morts = []; secousse = 0;
+  fileSpawn = []; vagueEnCours = false; compteARebours = 5;
+  choixPose = null; tourSel = null; vitesse = 1;
+  document.getElementById('btnVitesse').textContent = '1×';
+  ecran.classList.add('hidden');
+  etat = 'jeu';
+  majHud(); majShop(); majBoutonVague();
 }
 function partieTerminee() {
   etat = 'fin';
+  effacerSauvegarde();   // la partie est finie : rien à reprendre
   const nvRecord = vague > record;
   if (nvRecord) { record = vague; localStorage.setItem('zd_record', record); }
   bip(70, 1, 'sawtooth', 0.09);
