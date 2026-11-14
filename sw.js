@@ -1,5 +1,5 @@
 /* Zombie Defense - service worker : le jeu marche hors connexion une fois chargé */
-const CACHE = 'zombie-defense-v8';   // v8 : difficulté ajustée
+const CACHE = 'zombie-defense-v9';   // v9 : difficulté renforcée
 const FICHIERS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
