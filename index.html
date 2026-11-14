@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Zombie Defense</title>
+<!-- Installation sur l'écran d'accueil iPhone (Ajouter à l'écran d'accueil) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Zombie Defense">
+<meta name="theme-color" content="#0d1b12">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>
+  /* ============ ZOMBIE DEFENSE - styles ============ */
+  :root{
+    --fond:#0d1b12;        /* vert très sombre (nuit) */
+    --panneau:#16281b;     /* panneaux */
+    --bord:#2c4a33;
+    --texte:#e8f0e4;
+    --accent:#9be15d;      /* vert toxique */
+    --danger:#ff5a5a;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ height:100%; overflow:hidden; background:var(--fond); }
+  body{
+    font-family:-apple-system,'Segoe UI',system-ui,sans-serif;
+    color:var(--texte);
+    position:fixed; inset:0;               /* évite le rebond de scroll iOS */
+    touch-action:none;
+    user-select:none; -webkit-user-select:none;
+  }
+  #app{ display:flex; flex-direction:column; height:100dvh; width:100vw; }
+
+  /* ---- barre du haut : vies, argent, vague ---- */
+  #hud{
+    display:flex; justify-content:space-around; align-items:center;
+    padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
+    background:var(--panneau); border-bottom:2px solid var(--bord);
+    font-weight:700; font-size:17px; z-index:5;
+  }
+  #hud .stat{ display:flex; align-items:center; gap:5px; }
+  #hud button{
+    background:none; border:none; font-size:20px; padding:4px 6px; cursor:pointer;
+  }
+
+  /* ---- zone de jeu ---- */
+  #cvwrap{ position:relative; flex:1; overflow:hidden; background:var(--fond); }
+  canvas{ display:block; margin:0 auto; touch-action:none; }
+
+  /* bouton de lancement de vague (flottant sur la carte) */
+  #waveBtn{
+    position:absolute; right:10px; bottom:12px; z-index:4;
+    background:var(--accent); color:#0d1b12; border:none; border-radius:14px;
+    font-weight:800; font-size:15px; padding:12px 14px;
+    box-shadow:0 3px 0 #5e9430; cursor:pointer;
+  }
+  #waveBtn:active{ transform:translateY(2px); box-shadow:none; }
+  #waveBtn.hidden{ display:none; }
+
+  /* ---- magasin de tours (bas d'écran) ---- */
+  #shop{
+    display:flex; gap:8px; justify-content:center;
+    padding:8px 8px calc(env(safe-area-inset-bottom) + 8px);
+    background:var(--panneau); border-top:2px solid var(--bord); z-index:5;
+  }
+  .tourBtn{
+    flex:1; max-width:96px; border-radius:12px; border:2px solid var(--bord);
+    background:#0f2013; color:var(--texte); padding:6px 2px 5px;
+    display:flex; flex-direction:column; align-items:center; gap:1px; cursor:pointer;
+  }
+  .tourBtn .ico{ font-size:24px; line-height:1.1; }
+  .tourBtn .nom{ font-size:10.5px; font-weight:700; }
+  .tourBtn .prix{ font-size:11px; color:var(--accent); font-weight:700; }
+  .tourBtn.arme{ border-color:var(--accent); background:#1d3a22; }   /* tour choisie, prête à poser */
+  .tourBtn.chere{ opacity:.45; }                                       /* pas assez d'argent */
+
+  /* ---- panneau d'une tour posée (améliorer / vendre) ---- */
+  #panneau{
+    position:absolute; left:8px; right:8px; bottom:8px; z-index:6;
+    background:var(--panneau); border:2px solid var(--bord); border-radius:14px;
+    padding:10px 12px; display:none;
+  }
+  #panneau.ouvert{ display:block; }
+  #panneau .titre{ font-weight:800; margin-bottom:2px; }
+  #panneau .infos{ font-size:12.5px; opacity:.85; margin-bottom:8px; }
+  #panneau .actions{ display:flex; gap:8px; }
+  #panneau button{
+    flex:1; border:none; border-radius:10px; padding:9px 4px;
+    font-weight:800; font-size:13px; cursor:pointer;
+  }
+  #btnAmeliorer{ background:var(--accent); color:#0d1b12; }
+  #btnAmeliorer:disabled{ opacity:.4; }
+  #btnVendre{ background:#3a2a2a; color:#ffb0b0; }
+  #btnFermer{ background:#243628; color:var(--texte); flex:0 0 44px; }
+
+  /* ---- écrans (titre / game over) ---- */
+  #ecran{
+    position:absolute; inset:0; z-index:10;
+    background:rgba(8,15,10,.93);
+    display:flex; flex-direction:column; justify-content:center; align-items:center;
+    text-align:center; padding:24px; gap:14px;
+  }
+  #ecran.hidden{ display:none; }
+  #ecran h1{
+    font-size:38px; letter-spacing:2px; color:var(--accent);
+    text-shadow:0 0 22px rgba(155,225,93,.45);
+  }
+  #ecran .sous{ font-size:15px; opacity:.85; max-width:300px; line-height:1.45; }
+  #ecran .record{ font-size:13px; color:#ffd76a; font-weight:700; }
+  #ecran button{
+    background:var(--accent); color:#0d1b12; border:none; border-radius:16px;
+    font-size:19px; font-weight:800; padding:14px 46px; cursor:pointer;
+    box-shadow:0 4px 0 #5e9430;
+  }
+  #ecran button:active{ transform:translateY(3px); box-shadow:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <span class="stat">❤️ <span id="hudVies">20</span></span>
+    <span class="stat">💰 <span id="hudArgent">150</span></span>
+    <span class="stat">🌊 <span id="hudVague">0</span></span>
+    <button id="btnVitesse" title="Vitesse">1×</button>
+    <button id="btnSon" title="Son">🔊</button>
+  </div>
+
+  <div id="cvwrap">
+    <canvas id="cv"></canvas>
+    <button id="waveBtn" class="hidden"></button>
+    <div id="panneau">
+      <div class="titre" id="panTitre"></div>
+      <div class="infos" id="panInfos"></div>
+      <div class="actions">
+        <button id="btnAmeliorer"></button>
+        <button id="btnVendre"></button>
+        <button id="btnFermer">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shop"></div>
+
+  <div id="ecran"></div>
+</div>
+
+<script>
+'use strict';
+/* ================================================================
+   ZOMBIE DEFENSE
+   Tower defense en vagues infinies, pensé pour iPhone.
+   Tout le jeu tient dans ce fichier : carte, tours, zombies, vagues.
+   ================================================================ */
+
+/* ---------------- La carte ---------------- */
+const COLS = 8, ROWS = 13;                 // grille : 8 colonnes x 13 lignes
+// Le chemin des zombies, en cases (colonne, ligne). Il entre à gauche
+// et descend en zigzag jusqu'à la base, en bas à gauche.
+const CHEMIN = [
+  [-1, 1], [6, 1], [6, 4], [1, 4], [1, 7], [6, 7], [6, 10], [1, 10], [1, 13]
+];
+// Ensemble des cases du chemin ("col,row") : on ne peut pas construire dessus.
+const CASES_CHEMIN = new Set();
+for (let i = 0; i < CHEMIN.length - 1; i++) {
+  let [c1, r1] = CHEMIN[i], [c2, r2] = CHEMIN[i + 1];
+  while (c1 !== c2 || r1 !== r2) {
+    if (c1 >= 0 && c1 < COLS && r1 >= 0 && r1 < ROWS) CASES_CHEMIN.add(c1 + ',' + r1);
+    c1 += Math.sign(c2 - c1); r1 += Math.sign(r2 - r1);
+  }
+  if (c2 >= 0 && c2 < COLS && r2 >= 0 && r2 < ROWS) CASES_CHEMIN.add(c2 + ',' + r2);
+}
+
+/* ---------------- Les tours ----------------
+   rate   = tirs par seconde
+   dmg    = dégâts par tir
+   range  = portée en cases
+   aoe    = rayon de l'explosion (cases)
+   slow   = ralentissement appliqué (0.45 = -45% de vitesse)
+   chain  = nombre de zombies touchés par la foudre            */
+const TOURS = {
+  arbalete: { nom: 'Arbalète',    icone: '🏹', prix: 50,  range: 1.9, rate: 3.2, dmg: 8,
+              desc: 'Tire très vite.' },
+  canon:    { nom: 'Canon',       icone: '💣', prix: 100, range: 2.3, rate: 0.7, dmg: 26, aoe: 0.95,
+              desc: 'Gros dégâts de zone.' },
+  givre:    { nom: 'Lance-givre', icone: '❄️', prix: 75,  range: 1.8, rate: 1.3, dmg: 4, slow: 0.45, slowDur: 1.8,
+              desc: 'Ralentit les zombies.' },
+  tesla:    { nom: 'Tesla',       icone: '⚡', prix: 150, range: 2.4, rate: 1.0, dmg: 14, chain: 3,
+              desc: 'Foudre en chaîne (3 cibles).' },
+};
+const NIVEAU_MAX = 5;
+
+/* ---------------- Les zombies ----------------
+   speed = cases par seconde, r = rayon (en cases), money = argent à la mort,
+   vies  = vies retirées s'il atteint la base                            */
+const ZOMBIES = {
+  normal: { nom: 'Zombie',  pv: 40,  speed: 1.0,  money: 6,  vies: 1, r: 0.32, coul: '#7ec850' },
+  coureur:{ nom: 'Coureur', pv: 26,  speed: 1.9,  money: 5,  vies: 1, r: 0.28, coul: '#d3d94e' },
+  tank:   { nom: 'Tank',    pv: 160, speed: 0.55, money: 16, vies: 2, r: 0.44, coul: '#4a7a3a' },
+  boss:   { nom: 'Boss',    pv: 650, speed: 0.5,  money: 80, vies: 5, r: 0.58, coul: '#9b59b6' },
+};
+
+/* ---------------- État du jeu ---------------- */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let cell = 40;                  // taille d'une case en pixels CSS
+let dpr = 1;
+
+let etat = 'titre';             // titre | jeu | fin
+let argent = 150, vies = 20, vague = 0, score = 0, tues = 0;
+let tours = [];                 // tours posées
+let zombies = [];               // zombies en vie
+let projectiles = [];           // projectiles en vol
+let eclairs = [];               // effets de foudre (tesla)
+let textes = [];                // textes flottants "+6$"
+let fileSpawn = [];             // zombies restant à faire apparaître
+let minuteurSpawn = 0, vagueEnCours = false;
+let compteARebours = 0;         // secondes avant la prochaine vague auto
+let vitesse = 1;                // 1 ou 2 (bouton 1×/2×)
+let son = true;
+let choixPose = null;           // type de tour en cours de pose (armé via le magasin)
+let tourSel = null;             // tour sélectionnée sur la carte
+let record = +(localStorage.getItem('zd_record') || 0);
+
+/* ---------------- Réglage de la taille du canvas ---------------- */
+function redimensionner() {
+  const wrap = document.getElementById('cvwrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  cell = Math.floor(Math.min(w / COLS, h / ROWS));
+  const cssW = cell * COLS, cssH = cell * ROWS;
+  dpr = Math.min(window.devicePixelRatio || 1, 3);
+  cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
+  cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // repositionne le canvas verticalement au centre s'il reste de la place
+  cv.style.marginTop = Math.max(0, (h - cssH) / 2) + 'px';
+  construireCheminPixels();
+}
+window.addEventListener('resize', redimensionner);
+
+/* Points du chemin en pixels (centres des cases), de l'entrée à la base */
+let cheminPx = [];
+function construireCheminPixels() {
+  cheminPx = CHEMIN.map(([c, r]) => [(c + 0.5) * cell, (r + 0.5) * cell]);
+}
+function centreCase(c, r) { return [(c + 0.5) * cell, (r + 0.5) * cell]; }
+
+/* ---------------- Décors : pierres tombales (fixes, pseudo-aléatoires) ---- */
+const tombes = [];
+(function () {
+  let graine = 1337;
+  const alea = () => (graine = (graine * 16807) % 2147483647) / 2147483647;
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
+    if (!CASES_CHEMIN.has(c + ',' + r) && alea() < 0.14) {
+      tombes.push({ c, r, dx: (alea() - 0.5) * 0.5, dy: (alea() - 0.5) * 0.5, t: alea() });
+    }
+  }
+})();
+
+/* ---------------- Le son (mini synthèse WebAudio, aucun fichier) --------- */
+let actx = null;
+function initSon() {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (actx && actx.state === 'suspended') actx.resume();
+}
+function bip(freq, duree, type, vol) {
+  if (!son || !actx) return;
+  try {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || 0.04, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + (duree || 0.08));
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + (duree || 0.08));
+  } catch (e) {}
+}
+const SON_TIR = { arbalete: () => bip(880, 0.05, 'square', 0.02),
+                  canon:    () => bip(120, 0.25, 'sawtooth', 0.06),
+                  givre:    () => bip(1400, 0.12, 'sine', 0.03),
+                  tesla:    () => bip(2200, 0.07, 'square', 0.025) };
+
+/* ---------------- Construction d'une vague ----------------
+   Les vagues sont infinies : ça monte, ça monte...            */
+function compositionVague(n) {
+  const liste = [];
+  const nb = 6 + Math.floor(n * 1.7);
+  for (let i = 0; i < nb; i++) {
+    let t = 'normal';
+    if (n >= 3 && i % 4 === 2) t = 'coureur';
+    if (n >= 5 && i % 6 === 5) t = 'tank';
+    if (n >= 8 && i % 7 === 3) t = 'coureur';
+    if (n >= 12 && i % 9 === 6) t = 'tank';
+    liste.push(t);
+  }
+  if (n % 10 === 0) liste.push('boss');   // un boss toutes les 10 vagues
+  return liste;
+}
+
+function lancerVague() {
+  vague++;
+  fileSpawn = compositionVague(vague);
+  minuteurSpawn = 0;
+  vagueEnCours = true;
+  compteARebours = 0;
+  majBoutonVague();
+  majHud();
+  bip(300, 0.3, 'sawtooth', 0.05);
+}
+
+/* ---------------- Placement et sélection des tours ---------------- */
+function caseAuDoigt(x, y) {
+  const rect = cv.getBoundingClientRect();
+  const c = Math.floor((x - rect.left) / cell);
+  const r = Math.floor((y - rect.top) / cell);
+  if (c < 0 || c >= COLS || r < 0 || r >= ROWS) return null;
+  return [c, r];
+}
+function tourSur(c, r) { return tours.find(t => t.c === c && t.r === r); }
+function prixAmelioration(t) { return Math.round(TOURS[t.type].prix * 0.7 * t.niveau); }
+function investi(t) {
+  let total = TOURS[t.type].prix;
+  for (let n = 1; n < t.niveau; n++) total += Math.round(TOURS[t.type].prix * 0.7 * n);
+  return total;
+}
+
+cv.addEventListener('pointerdown', (e) => {
+  if (etat !== 'jeu') return;
+  initSon();
+  const pos = caseAuDoigt(e.clientX, e.clientY);
+  if (!pos) return;
+  const [c, r] = pos;
+
+  if (choixPose) {
+    // mode pose : on construit si la case est libre
+    const def = TOURS[choixPose];
+    if (!CASES_CHEMIN.has(c + ',' + r) && !tourSur(c, r) && argent >= def.prix) {
+      argent -= def.prix;
+      const [x, y] = centreCase(c, r);
+      tours.push({ type: choixPose, c, r, x, y, niveau: 1, recharge: 0, angle: 0 });
+      bip(500, 0.1, 'triangle', 0.05);
+      choixPose = null; majShop();
+      majHud();
+    } else {
+      bip(160, 0.15, 'square', 0.04);   // case invalide
+    }
+    fermerPanneau();
+    return;
+  }
+
+  // sinon : sélection d'une tour existante
+  const t = tourSur(c, r);
+  if (t) ouvrirPanneau(t); else fermerPanneau();
+});
+
+/* ---------------- Panneau améliorer / vendre ---------------- */
+const panneau = document.getElementById('panneau');
+function ouvrirPanneau(t) {
+  tourSel = t;
+  const def = TOURS[t.type];
+  document.getElementById('panTitre').textContent = def.icone + ' ' + def.nom + ' · niv. ' + t.niveau;
+  document.getElementById('panInfos').textContent =
+    'Dégâts ' + Math.round(def.dmg * Math.pow(1.35, t.niveau - 1)) +
+    ' · Portée ' + (def.range + 0.12 * (t.niveau - 1)).toFixed(1) +
+    ' · Cadence ' + (def.rate * Math.pow(1.1, t.niveau - 1)).toFixed(1) + '/s';
+  const btnA = document.getElementById('btnAmeliorer');
+  if (t.niveau >= NIVEAU_MAX) {
+    btnA.textContent = 'Niveau max'; btnA.disabled = true;
+  } else {
+    const prix = prixAmelioration(t);
+    btnA.textContent = '⬆ Améliorer (' + prix + '$)';
+    btnA.disabled = argent < prix;
+  }
+  document.getElementById('btnVendre').textContent = 'Vendre +' + Math.round(investi(t) * 0.7) + '$';
+  panneau.classList.add('ouvert');
+}
+function fermerPanneau() { tourSel = null; panneau.classList.remove('ouvert'); }
+document.getElementById('btnFermer').onclick = fermerPanneau;
+document.getElementById('btnAmeliorer').onclick = () => {
+  if (!tourSel) return;
+  const prix = prixAmelioration(tourSel);
+  if (tourSel.niveau < NIVEAU_MAX && argent >= prix) {
+    argent -= prix; tourSel.niveau++;
+    bip(700, 0.12, 'triangle', 0.05);
+    ouvrirPanneau(tourSel); majHud(); majShop();
+  }
+};
+document.getElementById('btnVendre').onclick = () => {
+  if (!tourSel) return;
+  argent += Math.round(investi(tourSel) * 0.7);
+  tours = tours.filter(t => t !== tourSel);
+  bip(350, 0.1, 'triangle', 0.04);
+  fermerPanneau(); majHud(); majShop();
+};
+
+/* ---------------- Le magasin ---------------- */
+const shop = document.getElementById('shop');
+function construireShop() {
+  shop.innerHTML = '';
+  for (const [type, def] of Object.entries(TOURS)) {
+    const b = document.createElement('button');
+    b.className = 'tourBtn';
+    b.innerHTML = '<span class="ico">' + def.icone + '</span>' +
+                  '<span class="nom">' + def.nom + '</span>' +
+                  '<span class="prix">' + def.prix + '$</span>';
+    b.title = def.desc;
+    b.onclick = () => {
+      initSon();
+      choixPose = (choixPose === type) ? null : type;   // tap = armer / désarmer
+      fermerPanneau();
+      majShop();
+    };
+    b.dataset.type = type;
+    shop.appendChild(b);
+  }
+}
+function majShop() {
+  for (const b of shop.children) {
+    const def = TOURS[b.dataset.type];
+    b.classList.toggle('arme', choixPose === b.dataset.type);
+    b.classList.toggle('chere', argent < def.prix);
+  }
+}
+
+/* ---------------- Bouton de vague + HUD ---------------- */
+const waveBtn = document.getElementById('waveBtn');
+function majBoutonVague() {
+  if (etat !== 'jeu' || vagueEnCours) { waveBtn.classList.add('hidden'); return; }
+  waveBtn.classList.remove('hidden');
+  const bonus = Math.ceil(compteARebours) * 2;
+  waveBtn.textContent = '▶ Vague ' + (vague + 1) + '  +' + bonus + '$';
+}
+waveBtn.onclick = () => {
+  if (vagueEnCours || etat !== 'jeu') return;
+  argent += Math.ceil(compteARebours) * 2;   // bonus si on lance tôt
+  lancerVague(); majShop();
+};
+function majHud() {
+  document.getElementById('hudVies').textContent = Math.max(0, vies);
+  document.getElementById('hudArgent').textContent = argent;
+  document.getElementById('hudVague').textContent = vague;
+}
+document.getElementById('btnVitesse').onclick = (e) => {
+  vitesse = (vitesse === 1) ? 2 : 1;
+  e.target.textContent = vitesse + '×';
+};
+document.getElementById('btnSon').onclick = (e) => {
+  initSon(); son = !son;
+  e.target.textContent = son ? '🔊' : '🔇';
+};
+
+/* ---------------- Mécanique du jeu ---------------- */
+function faireApparaitre(type) {
+  const def = ZOMBIES[type];
+  // les PV montent avec les vagues : +22% par vague
+  const pvMax = Math.round(def.pv * (1 + (vague - 1) * 0.22));
+  zombies.push({
+    type, x: cheminPx[0][0], y: cheminPx[0][1],
+    pv: pvMax, pvMax,
+    speed: def.speed, money: def.money, vies: def.vies, r: def.r * cell,
+    segment: 0, avancee: 0,          // position sur le chemin
+    lent: 0,                          // temps de ralentissement restant
+  });
+}
+
+function majZombies(dt) {
+  for (let i = zombies.length - 1; i >= 0; i--) {
+    const z = zombies[i];
+    if (z.lent > 0) z.lent -= dt;
+    const v = z.speed * (z.lent > 0 ? 1 - TOURS.givre.slow : 1) * cell; // px/s
+    let reste = v * dt;
+    // avance le long des segments du chemin
+    while (reste > 0 && z.segment < cheminPx.length - 1) {
+      const [tx, ty] = cheminPx[z.segment + 1];
+      const dx = tx - z.x, dy = ty - z.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= reste) {
+        z.x = tx; z.y = ty; z.segment++; reste -= d;
+      } else {
+        z.x += dx / d * reste; z.y += dy / d * reste; reste = 0;
+      }
+      z.avancee += 1;   // sert à viser le zombie le plus avancé
+    }
+    if (z.segment >= cheminPx.length - 1) {
+      // le zombie a atteint la base
+      vies -= z.vies;
+      zombies.splice(i, 1);
+      bip(90, 0.4, 'sawtooth', 0.08);
+      majHud();
+      if (vies <= 0) { partieTerminee(); return; }
+    }
+  }
+}
+
+function tuerZombie(z, index) {
+  argent += z.money; tues++; score += z.money + vague;
+  textes.push({ x: z.x, y: z.y, txt: '+' + z.money + '$', vie: 0.8 });
+  zombies.splice(index, 1);
+  bip(180 + Math.random() * 120, 0.1, 'triangle', 0.03);
+  majHud(); majShop();
+}
+
+function majTours(dt) {
+  for (const t of tours) {
+    const def = TOURS[t.type];
+    const range = (def.range + 0.12 * (t.niveau - 1)) * cell;
+    const dmg = def.dmg * Math.pow(1.35, t.niveau - 1);
+    const rate = def.rate * Math.pow(1.1, t.niveau - 1);
+    t.recharge -= dt;
+    // cible : le zombie le plus avancé à portée
+    let cible = null, meilleur = -1;
+    for (const z of zombies) {
+      const d = Math.hypot(z.x - t.x, z.y - t.y);
+      if (d <= range + z.r && z.avancee > meilleur) { meilleur = z.avancee; cible = z; }
+    }
+    if (cible) t.angle = Math.atan2(cible.y - t.y, cible.x - t.x);
+    if (cible && t.recharge <= 0) {
+      t.recharge = 1 / rate;
+      SON_TIR[t.type]();
+      if (t.type === 'tesla') {
+        // foudre en chaîne : touche jusqu'à `chain` zombies proches
+        let touches = [cible], dernier = cible;
+        for (let k = 1; k < def.chain; k++) {
+          let suiv = null, dmin = 1.6 * cell;
+          for (const z of zombies) {
+            if (touches.includes(z)) continue;
+            const d = Math.hypot(z.x - dernier.x, z.y - dernier.y);
+            if (d < dmin) { dmin = d; suiv = z; }
+          }
+          if (!suiv) break;
+          touches.push(suiv); dernier = suiv;
+        }
+        eclairs.push({ pts: [[t.x, t.y], ...touches.map(z => [z.x, z.y])], vie: 0.12 });
+        for (const z of touches) infligerDegats(z, dmg);
+      } else if (t.type === 'givre') {
+        projectiles.push({ x: t.x, y: t.y, cible, dmg, type, speed: 7 * cell });
+      } else {
+        projectiles.push({ x: t.x, y: t.y, cible, dmg, type, speed: (t.type === 'canon' ? 5 : 10) * cell });
+      }
+    }
+  }
+}
+
+function infligerDegats(z, dmg) {
+  z.pv -= dmg;
+  const i = zombies.indexOf(z);
+  if (z.pv <= 0 && i !== -1) tuerZombie(z, i);
+}
+
+function majProjectiles(dt) {
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    if (!zombies.includes(p.cible)) { projectiles.splice(i, 1); continue; }
+    const dx = p.cible.x - p.x, dy = p.cible.y - p.y;
+    const d = Math.hypot(dx, dy);
+    const pas = p.speed * dt;
+    if (d <= pas + p.cible.r) {
+      // touche !
+      if (p.type === 'canon') {
+        const def = TOURS.canon;
+        const aoe = def.aoe * cell;
+        eclairs.push({ pts: [[p.cible.x, p.cible.y]], vie: 0.18, boom: true, rayon: aoe });
+        for (const z of [...zombies]) {
+          if (Math.hypot(z.x - p.cible.x, z.y - p.cible.y) <= aoe + z.r) infligerDegats(z, p.dmg);
+        }
+        bip(80, 0.3, 'sawtooth', 0.07);
+      } else {
+        if (p.type === 'givre') p.cible.lent = TOURS.givre.slowDur;
+        infligerDegats(p.cible, p.dmg);
+      }
+      projectiles.splice(i, 1);
+    } else {
+      p.x += dx / d * pas; p.y += dy / d * pas;
+    }
+  }
+}
+
+/* ---------------- Boucle principale ---------------- */
+let dernierTemps = 0;
+function boucle(t) {
+  requestAnimationFrame(boucle);
+  if (etat !== 'jeu') { dernierTemps = t; return; }
+  let dt = Math.min((t - dernierTemps) / 1000, 0.1) * vitesse;
+  dernierTemps = t;
+
+  // apparition des zombies de la vague
+  if (vagueEnCours && fileSpawn.length) {
+    minuteurSpawn -= dt;
+    if (minuteurSpawn <= 0) {
+      faireApparaitre(fileSpawn.shift());
+      minuteurSpawn = Math.max(0.35, 1.05 - vague * 0.03);
+    }
+  }
+  // fin de vague -> compte à rebours avant la suivante
+  if (vagueEnCours && !fileSpawn.length && !zombies.length) {
+    vagueEnCours = false;
+    compteARebours = 10;
+    majBoutonVague();
+  }
+  if (!vagueEnCours) {
+    compteARebours -= dt;
+    if (compteARebours <= 0) lancerVague();
+    else majBoutonVague();
+  }
+
+  majZombies(dt);
+  if (etat !== 'jeu') return;   // la partie peut se terminer dans majZombies
+  majTours(dt);
+  majProjectiles(dt);
+  for (let i = eclairs.length - 1; i >= 0; i--) { eclairs[i].vie -= dt; if (eclairs[i].vie <= 0) eclairs.splice(i, 1); }
+  for (let i = textes.length - 1; i >= 0; i--)  { textes[i].vie -= dt;  textes[i].y -= 30 * dt; if (textes[i].vie <= 0) textes.splice(i, 1); }
+
+  dessiner();
+}
+
+/* ---------------- Dessin ---------------- */
+function dessiner() {
+  const W = cell * COLS, H = cell * ROWS;
+
+  // herbe de nuit
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#17301d'); g.addColorStop(1, '#0d1b12');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // damier discret pour lire la grille
+  ctx.fillStyle = 'rgba(255,255,255,0.022)';
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++)
+    if ((c + r) % 2 === 0) ctx.fillRect(c * cell, r * cell, cell, cell);
+
+  // lune
+  ctx.save();
+  ctx.shadowColor = 'rgba(230,240,255,.8)'; ctx.shadowBlur = cell * 0.9;
+  ctx.fillStyle = '#e9f2ff';
+  ctx.beginPath(); ctx.arc(W - cell * 0.7, cell * 0.55, cell * 0.32, 0, 7); ctx.fill();
+  ctx.restore();
+
+  // le chemin (terre battue)
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#6d563e'; ctx.lineWidth = cell * 0.78;
+  tracerChemin();
+  ctx.strokeStyle = '#5b4632'; ctx.lineWidth = cell * 0.62;
+  tracerChemin();
+  // traces de pas au centre
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 2;
+  ctx.setLineDash([6, 10]); tracerChemin(); ctx.setLineDash([]);
+
+  // pierres tombales
+  for (const tb of tombes) {
+    const [x, y] = centreCase(tb.c, tb.r);
+    const px = x + tb.dx * cell, py = y + tb.dy * cell;
+    ctx.fillStyle = tb.t > 0.5 ? '#5c6a70' : '#49565c';
+    ctx.beginPath();
+    ctx.moveTo(px - cell * 0.16, py + cell * 0.14);
+    ctx.lineTo(px - cell * 0.16, py - cell * 0.06);
+    ctx.arc(px, py - cell * 0.06, cell * 0.16, Math.PI, 0);
+    ctx.lineTo(px + cell * 0.16, py + cell * 0.14);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // la base (entrée du village) à protéger
+  const [bx, by] = centreCase(1, 12);
+  ctx.fillStyle = '#8a2f2f';
+  ctx.fillRect(bx - cell * 0.4, by - cell * 0.15, cell * 0.8, cell * 0.5);
+  ctx.fillStyle = '#5e1f1f';
+  ctx.beginPath();
+  ctx.moveTo(bx - cell * 0.48, by - cell * 0.15);
+  ctx.lineTo(bx, by - cell * 0.5);
+  ctx.lineTo(bx + cell * 0.48, by - cell * 0.15);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#ffd76a'; ctx.font = 'bold ' + (cell * 0.28) + 'px sans-serif';
+  ctx.textAlign = 'center'; ctx.fillText('BASE', bx, by + cell * 0.62);
+
+  // aperçu de pose (case survolée)
+  // (pas de survol au tactile : l'aperçu est le cercle de portée sous le doigt au moment du tap)
+
+  // tours
+  for (const t of tours) dessinerTour(t);
+
+  // portée de la tour sélectionnée
+  if (tourSel) {
+    const def = TOURS[tourSel.type];
+    ctx.fillStyle = 'rgba(155,225,93,0.12)';
+    ctx.strokeStyle = 'rgba(155,225,93,0.5)'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(tourSel.x, tourSel.y, (def.range + 0.12 * (tourSel.niveau - 1)) * cell, 0, 7);
+    ctx.fill(); ctx.stroke();
+  }
+
+  // zombies
+  for (const z of zombies) dessinerZombie(z);
+
+  // projectiles
+  for (const p of projectiles) {
+    if (p.type === 'canon') {
+      ctx.fillStyle = '#222';
+      ctx.beginPath(); ctx.arc(p.x, p.y, cell * 0.13, 0, 7); ctx.fill();
+      ctx.fillStyle = 'rgba(255,160,60,.8)';
+      ctx.beginPath(); ctx.arc(p.x, p.y, cell * 0.06, 0, 7); ctx.fill();
+    } else if (p.type === 'givre') {
+      ctx.fillStyle = '#9fe7ff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, cell * 0.09, 0, 7); ctx.fill();
+    } else {
+      ctx.fillStyle = '#f5e6a8';
+      ctx.beginPath(); ctx.arc(p.x, p.y, cell * 0.06, 0, 7); ctx.fill();
+    }
+  }
+
+  // effets : foudre et explosions
+  for (const e of eclairs) {
+    if (e.boom) {
+      const a = e.vie / 0.18;
+      ctx.fillStyle = 'rgba(255,' + Math.round(140 + 100 * a) + ',60,' + (0.45 * a) + ')';
+      ctx.beginPath(); ctx.arc(e.pts[0][0], e.pts[0][1], e.rayon * (1.2 - 0.4 * a), 0, 7); ctx.fill();
+    } else {
+      ctx.strokeStyle = 'rgba(170,220,255,' + (e.vie / 0.12) + ')';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < e.pts.length - 1; i++) {
+        const [x1, y1] = e.pts[i], [x2, y2] = e.pts[i + 1];
+        ctx.moveTo(x1, y1);
+        // zigzag pour l'effet éclair
+        const seg = 4;
+        for (let s = 1; s <= seg; s++) {
+          const k = s / seg;
+          const jx = s === seg ? 0 : (Math.random() - 0.5) * cell * 0.3;
+          const jy = s === seg ? 0 : (Math.random() - 0.5) * cell * 0.3;
+          ctx.lineTo(x1 + (x2 - x1) * k + jx, y1 + (y2 - y1) * k + jy);
+        }
+      }
+      ctx.stroke();
+    }
+  }
+
+  // textes flottants "+6$"
+  for (const tx of textes) {
+    ctx.globalAlpha = Math.min(1, tx.vie / 0.4);
+    ctx.fillStyle = '#ffd76a';
+    ctx.font = 'bold ' + (cell * 0.34) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(tx.txt, tx.x, tx.y);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function tracerChemin() {
+  ctx.beginPath();
+  ctx.moveTo(cheminPx[0][0], cheminPx[0][1]);
+  for (let i = 1; i < cheminPx.length; i++) ctx.lineTo(cheminPx[i][0], cheminPx[i][1]);
+  ctx.stroke();
+}
+
+function dessinerTour(t) {
+  const def = TOURS[t.type];
+  const s = cell;
+  // socle en pierre
+  ctx.fillStyle = '#3a4a3f';
+  ctx.beginPath(); ctx.arc(t.x, t.y, s * 0.4, 0, 7); ctx.fill();
+  ctx.strokeStyle = '#22301f'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.save();
+  ctx.translate(t.x, t.y);
+  if (t.type === 'arbalete') {
+    // arbalète : arc orienté vers la cible
+    ctx.rotate(t.angle);
+    ctx.fillStyle = '#8a5a2b'; ctx.fillRect(-s * 0.05, -s * 0.05, s * 0.34, s * 0.1);
+    ctx.strokeStyle = '#d8c9a0'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(s * 0.18, 0, s * 0.22, -1.1, 1.1); ctx.stroke();
+  } else if (t.type === 'canon') {
+    ctx.rotate(t.angle);
+    ctx.fillStyle = '#2c2c34'; ctx.fillRect(0, -s * 0.12, s * 0.42, s * 0.24);
+    ctx.fillStyle = '#4a4a55'; ctx.beginPath(); ctx.arc(0, 0, s * 0.24, 0, 7); ctx.fill();
+  } else if (t.type === 'givre') {
+    // cristal de glace
+    ctx.fillStyle = '#9fe7ff';
+    ctx.beginPath();
+    ctx.moveTo(0, -s * 0.32); ctx.lineTo(s * 0.2, s * 0.18); ctx.lineTo(-s * 0.2, s * 0.18);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.beginPath(); ctx.arc(0, -s * 0.05, s * 0.07, 0, 7); ctx.fill();
+  } else if (t.type === 'tesla') {
+    // bobine tesla
+    ctx.fillStyle = '#6a4a8a'; ctx.fillRect(-s * 0.08, -s * 0.2, s * 0.16, s * 0.36);
+    ctx.fillStyle = '#cfd8ff';
+    ctx.beginPath(); ctx.arc(0, -s * 0.26, s * 0.13, 0, 7); ctx.fill();
+    if (Math.random() < 0.25) {
+      ctx.strokeStyle = 'rgba(170,220,255,.9)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, -s * 0.26);
+      ctx.lineTo((Math.random() - 0.5) * s * 0.5, -s * 0.26 + (Math.random() - 0.5) * s * 0.5);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // petit badge de niveau
+  if (t.niveau > 1) {
+    ctx.fillStyle = '#ffd76a';
+    ctx.font = 'bold ' + (s * 0.22) + 'px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.niveau, t.x + s * 0.3, t.y - s * 0.26);
+  }
+}
+
+function dessinerZombie(z) {
+  const def = ZOMBIES[z.type];
+  const r = z.r;
+  // ombre
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(z.x, z.y + r * 0.75, r * 0.9, r * 0.35, 0, 0, 7); ctx.fill();
+  // corps (teinte bleutée s'il est gelé)
+  ctx.fillStyle = z.lent > 0 ? '#7fc8d8' : def.coul;
+  ctx.beginPath(); ctx.arc(z.x, z.y, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+  // yeux rouges
+  ctx.fillStyle = '#ff4040';
+  ctx.beginPath(); ctx.arc(z.x - r * 0.35, z.y - r * 0.15, r * 0.16, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(z.x + r * 0.35, z.y - r * 0.15, r * 0.16, 0, 7); ctx.fill();
+  // bouche
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(z.x, z.y + r * 0.35, r * 0.3, 0.15, Math.PI - 0.15); ctx.stroke();
+  // couronne du boss
+  if (z.type === 'boss') {
+    ctx.fillStyle = '#ffd76a';
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const ax = z.x + (i - 1) * r * 0.55;
+      ctx.moveTo(ax - r * 0.2, z.y - r * 0.95);
+      ctx.lineTo(ax, z.y - r * 1.45);
+      ctx.lineTo(ax + r * 0.2, z.y - r * 0.95);
+    }
+    ctx.fill();
+  }
+  // barre de vie
+  if (z.pv < z.pvMax) {
+    const w = r * 2;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(z.x - r, z.y - r * 1.45, w, 4);
+    ctx.fillStyle = z.pv / z.pvMax > 0.4 ? '#7ec850' : '#ff5a5a';
+    ctx.fillRect(z.x - r, z.y - r * 1.45, w * Math.max(0, z.pv / z.pvMax), 4);
+  }
+}
+
+/* ---------------- Écrans titre / game over ---------------- */
+const ecran = document.getElementById('ecran');
+function ecranTitre() {
+  etat = 'titre';
+  ecran.classList.remove('hidden');
+  ecran.innerHTML =
+    '<h1>🧟 ZOMBIE<br>DEFENSE</h1>' +
+    '<div class="sous">Défends ta base contre des vagues infinies de zombies.<br>' +
+    'Pose des arbalètes, des canons, du givre et des bobines tesla.<br>' +
+    'Chaque zombie tué rapporte de l\'argent. Tiens le plus longtemps possible !</div>' +
+    (record ? '<div class="record">🏆 Record : vague ' + record + '</div>' : '') +
+    '<button id="btnJouer">JOUER</button>';
+  document.getElementById('btnJouer').onclick = () => { initSon(); nouvellePartie(); };
+}
+function partieTerminee() {
+  etat = 'fin';
+  const nvRecord = vague > record;
+  if (nvRecord) { record = vague; localStorage.setItem('zd_record', record); }
+  bip(70, 1, 'sawtooth', 0.09);
+  waveBtn.classList.add('hidden');
+  fermerPanneau();
+  ecran.classList.remove('hidden');
+  ecran.innerHTML =
+    '<h1>💀 PARTIE<br>TERMINÉE</h1>' +
+    '<div class="sous">Tu as tenu jusqu\'à la <b>vague ' + vague + '</b><br>' +
+    tues + ' zombies éliminés · score ' + score + '</div>' +
+    (nvRecord ? '<div class="record">🏆 Nouveau record !</div>' : '<div class="record">🏆 Record : vague ' + record + '</div>') +
+    '<button id="btnRejouer">REJOUER</button>';
+  document.getElementById('btnRejouer').onclick = () => { initSon(); nouvellePartie(); };
+}
+function nouvellePartie() {
+  argent = 150; vies = 20; vague = 0; score = 0; tues = 0;
+  tours = []; zombies = []; projectiles = []; eclairs = []; textes = [];
+  fileSpawn = []; vagueEnCours = false; compteARebours = 5;
+  choixPose = null; tourSel = null; vitesse = 1;
+  document.getElementById('btnVitesse').textContent = '1×';
+  ecran.classList.add('hidden');
+  etat = 'jeu';
+  majHud(); majShop(); majBoutonVague();
+}
+
+/* ---------------- Démarrage ---------------- */
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+construireShop();
+redimensionner();
+setTimeout(redimensionner, 100);   // iOS ajuste parfois la hauteur au chargement
+ecranTitre();
+requestAnimationFrame(boucle);
+</script>
+</body>
+</html>
