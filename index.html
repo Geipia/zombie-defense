@@ -48,6 +48,13 @@
   #hud button{
     background:none; border:none; font-size:20px; padding:4px 6px; cursor:pointer;
   }
+  #hud #btnPause, #hud #btnRecommencer{
+    min-width:40px; height:38px; border:1px solid #46634a; border-radius:10px;
+    background:linear-gradient(180deg,#243c29,#17271b); color:var(--texte);
+    font-size:17px; font-weight:800; padding:0 8px; box-shadow:0 2px 4px rgba(0,0,0,.35);
+  }
+  #hud #btnRecommencer{ color:#ffd0a0; border-color:#75553b; }
+  #hud button:disabled{ opacity:.38; cursor:default; }
 
   /* ---- zone de jeu ---- */
   #cvwrap{ position:relative; flex:1; overflow:hidden; background:var(--fond); }
@@ -130,6 +137,22 @@
     box-shadow:0 3px 0 #16281b;
   }
   #ecran button:active{ transform:translateY(3px); box-shadow:none; }
+  #confirmRestart{
+    position:absolute; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
+    padding:22px; background:rgba(3,8,5,.78);
+  }
+  #confirmRestart.hidden{ display:none; }
+  #confirmRestart .boite{
+    width:min(100%,330px); padding:20px; border:2px solid var(--bord); border-radius:16px;
+    background:linear-gradient(180deg,#1b3021,#101d14); text-align:center;
+    box-shadow:0 12px 38px rgba(0,0,0,.65);
+  }
+  #confirmRestart h2{ color:#ffd0a0; font-size:20px; margin-bottom:9px; }
+  #confirmRestart p{ font-size:14px; line-height:1.45; opacity:.9; margin-bottom:16px; }
+  #confirmRestart .actions{ display:flex; gap:10px; }
+  #confirmRestart button{ flex:1; min-height:46px; border:0; border-radius:11px; font-weight:800; font-size:14px; cursor:pointer; }
+  #annulerRestart{ background:#263b2a; color:var(--texte); }
+  #confirmerRestart{ background:#a64438; color:#fff; }
 </style>
 </head>
 <body>
@@ -140,6 +163,8 @@
     <span class="stat">🌊 <span id="hudVague">0</span></span>
     <button id="btnVitesse" title="Vitesse">1×</button>
     <button id="btnSon" title="Son">🔊</button>
+    <button id="btnPause" title="Pause" aria-label="Mettre en pause" disabled>Ⅱ</button>
+    <button id="btnRecommencer" title="Recommencer à zéro" aria-label="Recommencer à zéro">↻</button>
   </div>
 
   <div id="cvwrap">
@@ -159,6 +184,16 @@
   <div id="shop"></div>
 
   <div id="ecran"></div>
+  <div id="confirmRestart" class="hidden" role="dialog" aria-modal="true" aria-labelledby="restartTitre">
+    <div class="boite">
+      <h2 id="restartTitre">Recommencer à zéro ?</h2>
+      <p>Ta partie en cours et sa sauvegarde seront effacées.</p>
+      <div class="actions">
+        <button id="annulerRestart">Continuer</button>
+        <button id="confirmerRestart">Tout recommencer</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -246,6 +281,7 @@ let minuteurSpawn = 0, vagueEnCours = false;
 let compteARebours = 0;         // secondes avant la prochaine vague auto
 let vitesse = 1;                // 1 ou 2 (bouton 1×/2×)
 let son = true;
+let enPause = false;             // suspend toute la simulation sans perdre la partie
 let choixPose = null;           // type de tour en cours de pose (armé via le magasin)
 let tourSel = null;             // tour sélectionnée sur la carte
 let record = +(localStorage.getItem('zd_record') || 0);
@@ -495,7 +531,7 @@ function majBoutonVague() {
   waveBtn.textContent = '▶ Vague ' + (vague + 1) + '  +' + bonus + '$';
 }
 waveBtn.onclick = () => {
-  if (vagueEnCours || etat !== 'jeu') return;
+  if (enPause || vagueEnCours || etat !== 'jeu') return;
   argent += Math.ceil(compteARebours) * 2;   // bonus si on lance tôt
   lancerVague(); majShop();
 };
@@ -511,6 +547,27 @@ document.getElementById('btnVitesse').onclick = (e) => {
 document.getElementById('btnSon').onclick = (e) => {
   initSon(); son = !son;
   e.target.textContent = son ? '🔊' : '🔇';
+};
+const btnPause = document.getElementById('btnPause');
+function majBoutonPause() {
+  btnPause.textContent = enPause ? '▶' : 'Ⅱ';
+  btnPause.title = enPause ? 'Reprendre' : 'Pause';
+  btnPause.setAttribute('aria-label', enPause ? 'Reprendre la partie' : 'Mettre en pause');
+  btnPause.disabled = etat !== 'jeu';
+}
+btnPause.onclick = () => {
+  if (etat !== 'jeu') return;
+  enPause = !enPause;
+  dernierTemps = performance.now();
+  majBoutonPause();
+};
+const confirmRestart = document.getElementById('confirmRestart');
+document.getElementById('btnRecommencer').onclick = () => confirmRestart.classList.remove('hidden');
+document.getElementById('annulerRestart').onclick = () => confirmRestart.classList.add('hidden');
+document.getElementById('confirmerRestart').onclick = () => {
+  confirmRestart.classList.add('hidden');
+  effacerSauvegarde();
+  nouvellePartie();
 };
 
 /* ---------------- Mécanique du jeu ---------------- */
@@ -672,7 +729,7 @@ function majProjectiles(dt) {
 let dernierTemps = 0;
 function boucle(t) {
   requestAnimationFrame(boucle);
-  if (etat !== 'jeu') { dernierTemps = t; return; }
+  if (etat !== 'jeu' || enPause) { dernierTemps = t; return; }
   let dt = Math.min((t - dernierTemps) / 1000, 0.1) * vitesse;
   dernierTemps = t;
 
@@ -1276,7 +1333,7 @@ function dessinerZombie(z) {
 /* ---------------- Écrans titre / game over ---------------- */
 const ecran = document.getElementById('ecran');
 function ecranTitre() {
-  etat = 'titre';
+  etat = 'titre'; enPause = false; majBoutonPause();
   const save = lireSauvegarde();
   ecran.classList.remove('hidden');
   ecran.innerHTML =
@@ -1303,14 +1360,14 @@ function reprendrePartie() {
   zombies = []; projectiles = []; eclairs = []; textes = [];
   particules = []; morts = []; secousse = 0;
   fileSpawn = []; vagueEnCours = false; compteARebours = 5;
-  choixPose = null; tourSel = null; vitesse = 1;
+  choixPose = null; tourSel = null; vitesse = 1; enPause = false;
   document.getElementById('btnVitesse').textContent = '1×';
   ecran.classList.add('hidden');
   etat = 'jeu';
-  majHud(); majShop(); majBoutonVague();
+  majBoutonPause(); majHud(); majShop(); majBoutonVague();
 }
 function partieTerminee() {
-  etat = 'fin';
+  etat = 'fin'; enPause = false; majBoutonPause();
   effacerSauvegarde();   // la partie est finie : rien à reprendre
   const nvRecord = vague > record;
   if (nvRecord) { record = vague; localStorage.setItem('zd_record', record); }
@@ -1331,11 +1388,11 @@ function nouvellePartie() {
   tours = []; zombies = []; projectiles = []; eclairs = []; textes = [];
   particules = []; morts = []; secousse = 0;
   fileSpawn = []; vagueEnCours = false; compteARebours = 5;
-  choixPose = null; tourSel = null; vitesse = 1;
+  choixPose = null; tourSel = null; vitesse = 1; enPause = false;
   document.getElementById('btnVitesse').textContent = '1×';
   ecran.classList.add('hidden');
   etat = 'jeu';
-  majHud(); majShop(); majBoutonVague();
+  majBoutonPause(); majHud(); majShop(); majBoutonVague();
 }
 
 /* ---------------- Démarrage ---------------- */
