@@ -534,9 +534,9 @@ function majTours(dt) {
         eclairs.push({ pts: [[t.x, t.y], ...touches.map(z => [z.x, z.y])], vie: 0.12 });
         for (const z of touches) infligerDegats(z, dmg);
       } else if (t.type === 'givre') {
-        projectiles.push({ x: t.x, y: t.y, cible, dmg, type, speed: 7 * cell });
+        projectiles.push({ x: t.x, y: t.y, cible, dmg, type: t.type, speed: 7 * cell });
       } else {
-        projectiles.push({ x: t.x, y: t.y, cible, dmg, type, speed: (t.type === 'canon' ? 5 : 10) * cell });
+        projectiles.push({ x: t.x, y: t.y, cible, dmg, type: t.type, speed: (t.type === 'canon' ? 5 : 10) * cell });
       }
     }
   }
