@@ -1,5 +1,5 @@
 /* Zombie Defense - service worker : le jeu marche hors connexion une fois chargé */
-const CACHE = 'zombie-defense-v6';   // v6 : supprime les anciennes caches
+const CACHE = 'zombie-defense-v7';   // v7 : ramp de difficulté ajusté
 const FICHIERS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', (e) => {
