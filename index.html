@@ -73,23 +73,25 @@
 
   /* ---- magasin de tours (bas d'écran) ---- */
   #shop{
-    display:flex; gap:8px; justify-content:center;
+    display:flex; gap:4px; justify-content:center;
     padding:8px 8px calc(env(safe-area-inset-bottom) + 8px);
     background:linear-gradient(0deg,#1b3122,#13241a);
     border-top:2px solid var(--bord); z-index:5;
     box-shadow:0 -2px 10px rgba(0,0,0,.5);
   }
   .tourBtn{
-    flex:1; max-width:96px; border-radius:12px; border:2px solid var(--bord);
+    flex:1; min-width:0; min-height:68px; max-width:96px; border-radius:12px; border:2px solid var(--bord);
     background:linear-gradient(180deg,#142a19,#0d1c11); color:var(--texte);
     padding:6px 2px 5px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 2px 5px rgba(0,0,0,.35);
     display:flex; flex-direction:column; align-items:center; gap:1px; cursor:pointer;
   }
   .tourBtn .ico{ font-size:24px; line-height:1.1; }
-  .tourBtn .nom{ font-size:10.5px; font-weight:700; }
+  .tourBtn .nom{ font-size:9px; font-weight:700; }
   .tourBtn .prix{ font-size:11px; color:var(--accent); font-weight:700; }
   .tourBtn.arme{ border-color:var(--accent); background:linear-gradient(180deg,#274d2c,#1a3620); box-shadow:0 0 12px rgba(155,225,93,.35); }   /* tour choisie, prête à poser */
   .tourBtn.chere{ opacity:.45; }                                       /* pas assez d'argent */
+
+  #aidePose{ min-height:34px; padding:5px 8px; text-align:center; font-size:11px; line-height:1.15; background:#101e15; color:#c8d9bf; }
 
   /* ---- panneau d'une tour posée (améliorer / vendre) ---- */
   #panneau{
@@ -181,6 +183,7 @@
     </div>
   </div>
 
+  <div id="aidePose" role="status" aria-live="polite">Tours sur l'herbe · murs sur le chemin</div>
   <div id="shop"></div>
 
   <div id="ecran"></div>
@@ -239,6 +242,13 @@ const TOURS = {
   tesla:    { nom: 'Tesla',       icone: '⚡', prix: 150, range: 2.4, rate: 1.0, dmg: 14, chain: 3,
               desc: 'Foudre en chaîne (3 cibles).' },
 };
+// Murs : PV fixes, sans tir ni amélioration. Le prix achète du temps, pas une défense infinie.
+TOURS.palissade = { nom: 'Palissade', icone: '🪵', prix: 35, pv: 240, mur: true,
+  desc: '240 PV. Peu chère, fragile. À poser sur le chemin.' };
+TOURS.rempart = { nom: 'Rempart', icone: '🧱', prix: 140, pv: 1200, mur: true,
+  desc: '1200 PV. Pierre solide, prix élevé. Sur le chemin.' };
+const ATTAQUE_MURS = { normal: 12, coureur: 9, tank: 30, boss: 100 }; // dégâts par seconde
+const CROISSANCE_ATTAQUE_MURS = 0.08; // +8 % par vague : les hordes finissent par passer
 const NIVEAU_MAX = 5;
 
 /* ---------------- Les zombies ----------------
@@ -294,14 +304,14 @@ function sauvegarder() {
   if (etat !== 'jeu') return;
   const data = {
     argent, vies, vague, score, tues, son,
-    tours: tours.map(t => ({ type: t.type, c: t.c, r: t.r, niveau: t.niveau })),
+    tours: tours.map(t => ({ type: t.type, c: t.c, r: t.r, niveau: t.niveau, ...(TOURS[t.type].mur ? { pv: t.pv } : {}) })),
   };
   try { localStorage.setItem(CLE_SAVE, JSON.stringify(data)); } catch (e) {}
 }
 function lireSauvegarde() {
   try {
     const d = JSON.parse(localStorage.getItem(CLE_SAVE) || 'null');
-    if (d && d.vague > 0 && Array.isArray(d.tours)) return d;
+    if (d && d.vague >= 0 && Array.isArray(d.tours)) return d;
   } catch (e) {}
   return null;
 }
@@ -417,6 +427,20 @@ function caseAuDoigt(x, y) {
   return [c, r];
 }
 function tourSur(c, r) { return tours.find(t => t.c === c && t.r === r); }
+function distanceChemin(c, r) {
+  let total = 0;
+  for (let i = 0; i < CHEMIN.length - 1; i++) {
+    const [a, b] = CHEMIN[i], [x, y] = CHEMIN[i + 1];
+    if (c >= Math.min(a, x) && c <= Math.max(a, x) && r >= Math.min(b, y) && r <= Math.max(b, y))
+      return total + Math.abs(c - a) + Math.abs(r - b);
+    total += Math.abs(x - a) + Math.abs(y - b);
+  }
+  return Infinity;
+}
+function valeurRevente(t) {
+  // Aucun recyclage gratuit d'un mur endommagé.
+  return Math.floor(investi(t) * 0.7 * (TOURS[t.type].mur ? t.pv / TOURS[t.type].pv : 1));
+}
 function prixAmelioration(t) { return Math.round(TOURS[t.type].prix * 0.7 * t.niveau); }
 function investi(t) {
   let total = TOURS[t.type].prix;
@@ -434,15 +458,22 @@ cv.addEventListener('pointerdown', (e) => {
   if (choixPose) {
     // mode pose : on construit si la case est libre
     const def = TOURS[choixPose];
-    if (!CASES_CHEMIN.has(c + ',' + r) && !tourSur(c, r) && argent >= def.prix) {
+    const terrainValide = CASES_CHEMIN.has(c + ',' + r) === !!def.mur;
+    const [px, py] = centreCase(c, r);
+    // Pas de mur posé directement sur un zombie : pas de piège ni de téléportation.
+    const occupe = def.mur && zombies.some(z => Math.hypot(z.x - px, z.y - py) < cell * 0.9 + z.r);
+    if (terrainValide && !tourSur(c, r) && !occupe && argent >= def.prix) {
       argent -= def.prix;
       const [x, y] = centreCase(c, r);
-      tours.push({ type: choixPose, c, r, x, y, niveau: 1, recharge: 0, angle: -Math.PI / 2, recul: 0 });
+      tours.push({ type: choixPose, c, r, x, y, niveau: 1, ...(def.mur ? { pv: def.pv } : {}), recharge: 0, angle: -Math.PI / 2, recul: 0 });
       bip(500, 0.1, 'triangle', 0.05);
       choixPose = null; majShop();
       majHud(); sauvegarder();
     } else {
-      bip(160, 0.15, 'square', 0.04);   // case invalide
+      bip(160, 0.15, 'square', 0.04);
+      document.getElementById('aidePose').textContent = argent < def.prix ? 'Pas assez d’argent.' :
+        occupe ? 'Un zombie est trop proche. Choisis une case libre.' :
+        def.mur ? 'Pose le mur sur une case libre du chemin.' : 'Pose la tour sur une case libre de l’herbe.';
     }
     fermerPanneau();
     return;
@@ -464,6 +495,11 @@ function ouvrirPanneau(t) {
     ' · Portée ' + (def.range + 0.12 * (t.niveau - 1)).toFixed(1) +
     ' · Cadence ' + (def.rate * Math.pow(1.1, t.niveau - 1)).toFixed(1) + '/s';
   const btnA = document.getElementById('btnAmeliorer');
+  btnA.style.display = def.mur ? 'none' : '';
+  if (def.mur) {
+    document.getElementById('panTitre').textContent = def.icone + ' ' + def.nom;
+    document.getElementById('panInfos').textContent = Math.ceil(t.pv) + ' / ' + def.pv + ' PV · Bloque les zombies · Sans amélioration';
+  }
   if (t.niveau >= NIVEAU_MAX) {
     btnA.textContent = 'Niveau max'; btnA.disabled = true;
   } else {
@@ -471,13 +507,13 @@ function ouvrirPanneau(t) {
     btnA.textContent = '⬆ Améliorer (' + prix + '$)';
     btnA.disabled = argent < prix;
   }
-  document.getElementById('btnVendre').textContent = 'Vendre +' + Math.round(investi(t) * 0.7) + '$';
+  document.getElementById('btnVendre').textContent = 'Vendre +' + valeurRevente(t) + '$';
   panneau.classList.add('ouvert');
 }
 function fermerPanneau() { tourSel = null; panneau.classList.remove('ouvert'); }
 document.getElementById('btnFermer').onclick = fermerPanneau;
 document.getElementById('btnAmeliorer').onclick = () => {
-  if (!tourSel) return;
+  if (!tourSel || TOURS[tourSel.type].mur) return;
   const prix = prixAmelioration(tourSel);
   if (tourSel.niveau < NIVEAU_MAX && argent >= prix) {
     argent -= prix; tourSel.niveau++;
@@ -487,7 +523,7 @@ document.getElementById('btnAmeliorer').onclick = () => {
 };
 document.getElementById('btnVendre').onclick = () => {
   if (!tourSel) return;
-  argent += Math.round(investi(tourSel) * 0.7);
+  argent += valeurRevente(tourSel);
   tours = tours.filter(t => t !== tourSel);
   bip(350, 0.1, 'triangle', 0.04);
   fermerPanneau(); majHud(); majShop(); sauvegarder();
@@ -515,6 +551,9 @@ function construireShop() {
   }
 }
 function majShop() {
+  document.getElementById('aidePose').textContent = choixPose ?
+    TOURS[choixPose].nom + ' · ' + (TOURS[choixPose].mur ? TOURS[choixPose].pv + ' PV · touche le chemin' : 'touche l’herbe pour poser') :
+    'Tours sur l’herbe · murs sur le chemin';
   for (const b of shop.children) {
     const def = TOURS[b.dataset.type];
     b.classList.toggle('arme', choixPose === b.dataset.type);
@@ -596,6 +635,29 @@ function majZombies(dt) {
     const v = z.speed * (z.lent > 0 ? 1 - TOURS.givre.slow : 1) * cell; // px/s
     z.marche += (v / cell) * dt * 7;   // fait avancer l'animation de marche
     let reste = v * dt;
+    const progression = distanceChemin(z.x / cell - 0.5, z.y / cell - 0.5);
+    // Premier mur devant le zombie, même si un pas traverse un virage.
+    let obstacle = null, distanceMur = Infinity;
+    for (const mur of tours) {
+      if (!TOURS[mur.type].mur) continue;
+      const d = distanceChemin(mur.c, mur.r) - progression;
+      if (d >= -0.001 && d < distanceMur) { obstacle = mur; distanceMur = d; }
+    }
+    if (obstacle) {
+      const contact = Math.max(0, (distanceMur - 0.42 - z.r / cell * 0.45) * cell);
+      if (contact <= reste) {
+        // Seule la portion du pas passée au contact inflige des dégâts.
+        const tempsContact = Math.max(0, dt - contact / v);
+        obstacle.pv -= ATTAQUE_MURS[z.type] * (1 + Math.max(0, vague - 1) * CROISSANCE_ATTAQUE_MURS) * tempsContact;
+        reste = contact;
+        if (obstacle.pv <= 0) {
+          textes.push({ x: obstacle.x, y: obstacle.y, txt: 'Brisé !', vie: 0.8 });
+          tours = tours.filter(t => t !== obstacle);
+          if (tourSel === obstacle) fermerPanneau();
+          sauvegarder();
+        } else if (tourSel === obstacle) ouvrirPanneau(obstacle);
+      }
+    }
     // avance le long des segments du chemin
     while (reste > 0 && z.segment < cheminPx.length - 1) {
       const [tx, ty] = cheminPx[z.segment + 1];
@@ -640,6 +702,7 @@ function tuerZombie(z, index) {
 function majTours(dt) {
   for (const t of tours) {
     const def = TOURS[t.type];
+    if (def.mur) continue; // les murs ne tirent jamais
     const range = (def.range + 0.12 * (t.niveau - 1)) * cell;
     const dmg = def.dmg * Math.pow(1.35, t.niveau - 1);
     const rate = def.rate * Math.pow(1.1, t.niveau - 1);
@@ -731,7 +794,7 @@ function majProjectiles(dt) {
 let dernierTemps = 0;
 function boucle(t) {
   requestAnimationFrame(boucle);
-  if (etat !== 'jeu' || enPause) { dernierTemps = t; return; }
+  if (etat !== 'jeu' || enPause) { dernierTemps = t; if (etat === 'jeu') dessiner(); return; }
   let dt = Math.min((t - dernierTemps) / 1000, 0.1) * vitesse;
   dernierTemps = t;
 
@@ -930,10 +993,19 @@ function dessiner() {
   // (pas de survol au tactile : l'aperçu est le cercle de portée sous le doigt au moment du tap)
 
   // tours
-  for (const t of tours) dessinerTour(t);
+  if (choixPose) {
+    // Cases valides visibles dès le choix, aussi sur écran tactile.
+    const mur = !!TOURS[choixPose].mur;
+    ctx.fillStyle = mur ? 'rgba(246,198,108,.23)' : 'rgba(155,225,93,.12)';
+    for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++) {
+      if (CASES_CHEMIN.has(c + ',' + r) === mur && !tourSur(c, r))
+        ctx.fillRect(c * cell + 2, r * cell + 2, cell - 4, cell - 4);
+    }
+  }
+  for (const t of tours) TOURS[t.type].mur ? dessinerMur(t) : dessinerTour(t);
 
   // portée de la tour sélectionnée
-  if (tourSel) {
+  if (tourSel && !TOURS[tourSel.type].mur) {
     const def = TOURS[tourSel.type];
     ctx.fillStyle = 'rgba(155,225,93,0.12)';
     ctx.strokeStyle = 'rgba(155,225,93,0.5)'; ctx.lineWidth = 2;
@@ -1082,6 +1154,41 @@ function tracerChemin() {
   ctx.moveTo(cheminPx[0][0], cheminPx[0][1]);
   for (let i = 1; i < cheminPx.length; i++) ctx.lineTo(cheminPx[i][0], cheminPx[i][1]);
   ctx.stroke();
+}
+
+function dessinerMur(t) {
+  const s = cell, ratio = Math.max(0, t.pv / TOURS[t.type].pv), bois = t.type === 'palissade';
+  ctx.save(); ctx.translate(t.x, t.y);
+  ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(-s * .44, -s * .3, s * .9, s * .74);
+  if (bois) {
+    for (let i = 0; i < 5; i++) {
+      const x = (-.38 + i * .16) * s;
+      ctx.fillStyle = i % 2 ? '#987044' : '#76502f';
+      ctx.beginPath(); ctx.moveTo(x, s * .32); ctx.lineTo(x, -s * .26);
+      ctx.lineTo(x + s * .07, -s * .41); ctx.lineTo(x + s * .14, -s * .26);
+      ctx.lineTo(x + s * .14, s * .32); ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = '#3d332b'; ctx.fillRect(-s * .4, -s * .1, s * .8, s * .07);
+    ctx.fillRect(-s * .4, s * .17, s * .8, s * .07);
+  } else {
+    ctx.fillStyle = '#333b3f'; ctx.fillRect(-s * .43, -s * .34, s * .86, s * .69);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) {
+      ctx.fillStyle = (r + c) % 2 ? '#78868a' : '#5b6c70';
+      ctx.fillRect((-0.4 + c * .27) * s, (-.31 + r * .22) * s, s * .25, s * .2);
+    }
+    ctx.fillStyle = '#323c40'; ctx.fillRect(-s * .33, -s * .39, s * .14, s * .13);
+    ctx.fillRect(s * .16, -s * .39, s * .14, s * .13);
+    ctx.fillStyle = '#496446'; ctx.fillRect(-s * .4, s * .26, s * .3, s * .07);
+  }
+  if (ratio < .7) {
+    ctx.strokeStyle = '#201d19'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(s * .1, -s * .3); ctx.lineTo(-s * .04, -s * .05);
+    ctx.lineTo(s * .09, s * .08); ctx.lineTo(-s * .06, s * .3); ctx.stroke();
+  }
+  if (tourSel === t) { ctx.strokeStyle = '#dceca0'; ctx.lineWidth = 2; ctx.strokeRect(-s * .45, -s * .43, s * .9, s * .86); }
+  ctx.fillStyle = '#080f0b'; ctx.fillRect(-s * .43, s * .37, s * .86, 7);
+  ctx.fillStyle = ratio > .4 ? '#a5d77a' : '#ff775e'; ctx.fillRect(-s * .4, s * .37 + 1, s * .8 * ratio, 4);
+  ctx.restore();
 }
 
 function dessinerTour(t) {
@@ -1337,7 +1444,7 @@ function ecranTitre() {
   ecran.innerHTML =
     '<h1>🧟 ZOMBIE<br>DEFENSE</h1>' +
     '<div class="sous">Défends ta base contre des vagues infinies de zombies.<br>' +
-    'Pose des arbalètes, des canons, du givre et des bobines tesla.<br>' +
+    'Pose tes tours sur l’herbe et tes murs sur le chemin.<br>Palissade : 35$ / 240 PV. Rempart : 140$ / 1200 PV.<br>' +
     'Chaque zombie tué rapporte de l\'argent. Tiens le plus longtemps possible !</div>' +
     (record ? '<div class="record">🏆 Record : vague ' + record + '</div>' : '') +
     (save ? '<button id="btnReprendre">▶ REPRENDRE · VAGUE ' + (save.vague + 1) + '</button>' : '') +
@@ -1353,7 +1460,7 @@ function reprendrePartie() {
   document.getElementById('btnSon').textContent = son ? '🔊' : '🔇';
   tours = d.tours.map(t => {
     const [x, y] = centreCase(t.c, t.r);
-    return { type: t.type, c: t.c, r: t.r, x, y, niveau: t.niveau, recharge: 0, angle: -Math.PI / 2, recul: 0 };
+    return { type: t.type, c: t.c, r: t.r, x, y, niveau: t.niveau, ...(TOURS[t.type].mur ? { pv: Math.min(TOURS[t.type].pv, Math.max(1, t.pv || TOURS[t.type].pv)) } : {}), recharge: 0, angle: -Math.PI / 2, recul: 0 };
   });
   zombies = []; projectiles = []; eclairs = []; textes = [];
   particules = []; morts = []; secousse = 0;
