@@ -155,6 +155,28 @@
   #confirmRestart button{ flex:1; min-height:46px; border:0; border-radius:11px; font-weight:800; font-size:14px; cursor:pointer; }
   #annulerRestart{ background:#263b2a; color:var(--texte); }
   #confirmerRestart{ background:#a64438; color:#fff; }
+
+  /* Identité nocturne : acier bleuté, cuivre et lumière de lanterne. */
+  :root{--fond:#080f1c;--panneau:#142638;--bord:#314b5b;--texte:#edf2e4;--accent:#e8c078}
+  #hud{background:linear-gradient(#223447,#111f30);border-color:#3d5666;font-size:15px;padding-top:calc(env(safe-area-inset-top) + 5px)}
+  #hud #btnPause,#hud #btnRecommencer{background:linear-gradient(#2b4050,#182c3b);border-color:#506675}#hud button{color:#e9dec9;font-size:18px;padding:4px}
+  #cvwrap{background:radial-gradient(ellipse at 50% 20%,#172c3d,#080e19)}
+  #strategie{padding:8px 14px;background:linear-gradient(110deg,#1e3040,#111e2d);border-bottom:1px solid #45606a;min-height:82px;z-index:4}
+  #strategie .phase{font-size:10px;letter-spacing:2px;color:#ebc882;font-weight:900;margin-bottom:3px}
+  #apercu{font-size:12px;font-weight:800;color:#ecf2ee;line-height:1.4}
+  #conseil{font-size:11px;color:#b2c9cb;margin-top:3px;line-height:1.35}
+  #strategie.combat .phase{color:#f7957f}
+  #shop{background:linear-gradient(#1e3040,#101c2a);border-color:#3b5062;padding:7px 5px calc(env(safe-area-inset-bottom) + 8px)}
+  .tourBtn{border:1px solid #405363;border-radius:8px;background:linear-gradient(#223748,#142231);min-height:72px}
+  .tourBtn.arme{border-color:#ebc57e;background:linear-gradient(#4a493b,#29383a);box-shadow:0 0 10px #d2ad5040}
+  .tourBtn .prix{color:#f4d18e}.tourBtn.chere{opacity:.55}
+  #aidePose{background:#0d1a28;color:#b6cace;min-height:28px;font-size:11px}
+  #waveBtn{background:linear-gradient(#f4d997,#d5a352);color:#172331;font-size:13px;border:1px solid #ffe4ad;border-radius:8px;box-shadow:0 3px 0 #715331,0 6px 16px #0008;bottom:10px}
+  #btnCible{background:#294658;color:#c1e7f0;font-size:11px}
+  #panneau .actions{flex-wrap:wrap;gap:5px}#panneau button{font-size:11px;min-height:40px}#btnFermer{flex:0 0 35px}
+  #ecran{background:radial-gradient(ellipse at 70% 10%,#344c6580,transparent 60%),linear-gradient(#09131df0,#101d2af2)}
+  #ecran h1{font-family:Georgia,serif;color:#f0d49d;font-size:43px;text-shadow:0 3px #4b3c28,0 0 35px #e3bf6250;letter-spacing:5px}
+  #ecran button{background:linear-gradient(#f4d997,#c89c53);border-radius:9px;box-shadow:0 4px #735532,0 8px 20px #0008;font-size:16px}
 </style>
 </head>
 <body>
@@ -169,6 +191,7 @@
     <button id="btnRecommencer" title="Recommencer à zéro" aria-label="Recommencer à zéro">↻</button>
   </div>
 
+  <div id="strategie"><div class="phase" id="phase">PRÉPARATION</div><div id="apercu"></div><div id="conseil"></div></div>
   <div id="cvwrap">
     <canvas id="cv"></canvas>
     <button id="waveBtn" class="hidden"></button>
@@ -176,7 +199,7 @@
       <div class="titre" id="panTitre"></div>
       <div class="infos" id="panInfos"></div>
       <div class="actions">
-        <button id="btnAmeliorer"></button>
+        <button id="btnCible" title="Changer la priorité des cibles"></button><button id="btnAmeliorer"></button>
         <button id="btnVendre"></button>
         <button id="btnFermer">✕</button>
       </div>
@@ -250,6 +273,23 @@ TOURS.rempart = { nom: 'Rempart', icone: '🧱', prix: 140, pv: 1200, mur: true,
 const ATTAQUE_MURS = { normal: 12, coureur: 9, tank: 30, boss: 100 }; // dégâts par seconde
 const CROISSANCE_ATTAQUE_MURS = 0.08; // +8 % par vague : les hordes finissent par passer
 const NIVEAU_MAX = 5;
+const PRIME_PREPARATION = 14;
+const PRIORITES = { premier: 'Premier', fort: 'Plus résistant', rapide: 'Plus rapide' };
+let decorCache = null; // décor statique précalculé : le mobile ne redessine pas chaque pavé
+let horlogeVisuelle = 0;
+function majStrategie() {
+  const n = vague + 1, liste = compositionVague(n), compte = {};
+  for (const t of liste) compte[t] = (compte[t] || 0) + 1;
+  document.getElementById('strategie').classList.toggle('combat', vagueEnCours);
+  document.getElementById('phase').textContent = vagueEnCours ? 'ASSAUT ' + vague + ' · ' + (zombies.length + fileSpawn.length) + ' RESTANTS' : 'PRÉPARATION LIBRE · VAGUE ' + n;
+  document.getElementById('apercu').textContent = (vagueEnCours ? 'Ensuite : ' : '') + Object.entries(compte).map(([t,k]) => k + ' ' + ZOMBIES[t].nom.toLowerCase() + (k > 1 ? 's' : '')).join(' · ');
+  document.getElementById('conseil').textContent = vagueEnCours ? 'Pause Ⅱ : construis et règle tes priorités sans pression.' :
+    compte.boss ? 'Boss : priorité « Plus résistant ». Combine givre, tirs et murs.' :
+    compte.tank ? 'Tanks : concentre les tirs. Un mur sous plusieurs tours crée une zone de feu.' :
+    compte.coureur ? 'Coureurs : priorité « Plus rapide » et givre pour les retenir.' :
+    'Prends ton temps. Place tes tours près des virages, puis lance l’assaut.';
+}
+
 
 /* ---------------- Les zombies ----------------
    speed = cases par seconde, r = rayon (en cases), money = argent à la mort,
@@ -304,7 +344,7 @@ function sauvegarder() {
   if (etat !== 'jeu') return;
   const data = {
     argent, vies, vague, score, tues, son,
-    tours: tours.map(t => ({ type: t.type, c: t.c, r: t.r, niveau: t.niveau, ...(TOURS[t.type].mur ? { pv: t.pv } : {}) })),
+    tours: tours.map(t => ({ type: t.type, c: t.c, r: t.r, niveau: t.niveau, priorite: t.priorite || 'premier', ...(TOURS[t.type].mur ? { pv: t.pv } : {}) })),
   };
   try { localStorage.setItem(CLE_SAVE, JSON.stringify(data)); } catch (e) {}
 }
@@ -332,6 +372,8 @@ function redimensionner() {
   // repositionne le canvas verticalement au centre s'il reste de la place
   cv.style.marginTop = Math.max(0, (h - cssH) / 2) + 'px';
   construireCheminPixels();
+  decorCache = null;
+  for (const t of tours) [t.x, t.y] = centreCase(t.c, t.r);
 }
 window.addEventListener('resize', redimensionner);
 
@@ -407,6 +449,7 @@ function compositionVague(n) {
 }
 
 function lancerVague() {
+  if (vagueEnCours || etat !== 'jeu') return;
   vague++;
   fileSpawn = compositionVague(vague);
   minuteurSpawn = 0;
@@ -496,6 +539,9 @@ function ouvrirPanneau(t) {
     ' · Cadence ' + (def.rate * Math.pow(1.1, t.niveau - 1)).toFixed(1) + '/s';
   const btnA = document.getElementById('btnAmeliorer');
   btnA.style.display = def.mur ? 'none' : '';
+  const btnC = document.getElementById('btnCible');
+  btnC.style.display = def.mur ? 'none' : '';
+  btnC.textContent = 'Cible : ' + PRIORITES[t.priorite || 'premier'] + ' ↻';
   if (def.mur) {
     document.getElementById('panTitre').textContent = def.icone + ' ' + def.nom;
     document.getElementById('panInfos').textContent = Math.ceil(t.pv) + ' / ' + def.pv + ' PV · Bloque les zombies · Sans amélioration';
@@ -512,6 +558,12 @@ function ouvrirPanneau(t) {
 }
 function fermerPanneau() { tourSel = null; panneau.classList.remove('ouvert'); }
 document.getElementById('btnFermer').onclick = fermerPanneau;
+document.getElementById('btnCible').onclick = () => {
+  if (!tourSel || TOURS[tourSel.type].mur) return;
+  const modes = Object.keys(PRIORITES);
+  tourSel.priorite = modes[(modes.indexOf(tourSel.priorite || 'premier') + 1) % modes.length];
+  ouvrirPanneau(tourSel); sauvegarder();
+};
 document.getElementById('btnAmeliorer').onclick = () => {
   if (!tourSel || TOURS[tourSel.type].mur) return;
   const prix = prixAmelioration(tourSel);
@@ -536,9 +588,15 @@ function construireShop() {
   for (const [type, def] of Object.entries(TOURS)) {
     const b = document.createElement('button');
     b.className = 'tourBtn';
-    b.innerHTML = '<span class="ico">' + def.icone + '</span>' +
+    b.innerHTML = '<span class="ico"></span>' +
                   '<span class="nom">' + def.nom + '</span>' +
                   '<span class="prix">' + def.prix + '$</span>';
+    const miniature = document.createElement('canvas'); miniature.width=80; miniature.height=64;
+    miniature.style.cssText='width:38px;height:30px;margin:0';
+    const mc=miniature.getContext('2d');mc.scale(1.3,1.3);
+    const objet={type,c:0,r:0,x:30,y:29,niveau:1,angle:-.6,recul:0,pv:def.pv};
+    def.mur?dessinerMur(objet,mc):dessinerTour(objet,mc);
+    b.querySelector('.ico').appendChild(miniature);
     b.title = def.desc;
     b.onclick = () => {
       initSon();
@@ -553,7 +611,7 @@ function construireShop() {
 function majShop() {
   document.getElementById('aidePose').textContent = choixPose ?
     TOURS[choixPose].nom + ' · ' + (TOURS[choixPose].mur ? TOURS[choixPose].pv + ' PV · touche le chemin' : 'touche l’herbe pour poser') :
-    'Tours sur l’herbe · murs sur le chemin';
+    'Tours : herbe · murs : chemin · chiffres : tours à portée';
   for (const b of shop.children) {
     const def = TOURS[b.dataset.type];
     b.classList.toggle('arme', choixPose === b.dataset.type);
@@ -566,18 +624,19 @@ const waveBtn = document.getElementById('waveBtn');
 function majBoutonVague() {
   if (etat !== 'jeu' || vagueEnCours) { waveBtn.classList.add('hidden'); return; }
   waveBtn.classList.remove('hidden');
-  const bonus = Math.ceil(compteARebours) * 2;
-  waveBtn.textContent = '▶ Vague ' + (vague + 1) + '  +' + bonus + '$';
+  waveBtn.textContent = '▶ Lancer la vague ' + (vague + 1) + ' · +' + PRIME_PREPARATION + '$';
+  majStrategie();
 }
 waveBtn.onclick = () => {
   if (enPause || vagueEnCours || etat !== 'jeu') return;
-  argent += Math.ceil(compteARebours) * 2;   // bonus si on lance tôt
+  argent += PRIME_PREPARATION; // prime fixe, aucune pénalité à réfléchir
   lancerVague(); majShop();
 };
 function majHud() {
   document.getElementById('hudVies').textContent = Math.max(0, vies);
   document.getElementById('hudArgent').textContent = argent;
   document.getElementById('hudVague').textContent = vague;
+  majStrategie();
 }
 document.getElementById('btnVitesse').onclick = (e) => {
   vitesse = (vitesse === 1) ? 2 : 1;
@@ -633,6 +692,7 @@ function majZombies(dt) {
     if (z.lent > 0) z.lent -= dt;
     if (z.flash > 0) z.flash -= dt * 6;
     const v = z.speed * (z.lent > 0 ? 1 - TOURS.givre.slow : 1) * cell; // px/s
+    z.attaque = false;
     z.marche += (v / cell) * dt * 7;   // fait avancer l'animation de marche
     let reste = v * dt;
     const progression = distanceChemin(z.x / cell - 0.5, z.y / cell - 0.5);
@@ -647,11 +707,17 @@ function majZombies(dt) {
       const contact = Math.max(0, (distanceMur - 0.42 - z.r / cell * 0.45) * cell);
       if (contact <= reste) {
         // Seule la portion du pas passée au contact inflige des dégâts.
+        z.attaque = true;
         const tempsContact = Math.max(0, dt - contact / v);
         obstacle.pv -= ATTAQUE_MURS[z.type] * (1 + Math.max(0, vague - 1) * CROISSANCE_ATTAQUE_MURS) * tempsContact;
         reste = contact;
         if (obstacle.pv <= 0) {
           textes.push({ x: obstacle.x, y: obstacle.y, txt: 'Brisé !', vie: 0.8 });
+          for (let k=0;k<14;k++) {
+            const a=k/14*Math.PI*2;
+            particules.push({x:obstacle.x,y:obstacle.y,vx:Math.cos(a)*cell,vy:Math.sin(a)*cell-cell,
+              vie:.4+Math.random()*.4,taille:2+Math.random()*3,coul:obstacle.type==='rempart'?'#9aaab0':'#ad8352',fumee:k%3===0});
+          }
           tours = tours.filter(t => t !== obstacle);
           if (tourSel === obstacle) fermerPanneau();
           sauvegarder();
@@ -712,7 +778,9 @@ function majTours(dt) {
     let cible = null, meilleur = -1;
     for (const z of zombies) {
       const d = Math.hypot(z.x - t.x, z.y - t.y);
-      if (d <= range + z.r && z.avancee > meilleur) { meilleur = z.avancee; cible = z; }
+      // Distance réelle sur le chemin : indépendante du nombre d'images et du ralentissement.
+      const valeur = t.priorite === 'fort' ? z.pv : t.priorite === 'rapide' ? z.speed : distanceChemin(z.x / cell - .5, z.y / cell - .5);
+      if (d <= range + z.r && valeur > meilleur) { meilleur = valeur; cible = z; }
     }
     if (cible) t.angle = Math.atan2(cible.y - t.y, cible.x - t.x);
     if (cible && t.recharge <= 0) {
@@ -777,7 +845,10 @@ function majProjectiles(dt) {
         }
         bip(80, 0.3, 'sawtooth', 0.07);
       } else {
-        if (p.type === 'givre') p.cible.lent = TOURS.givre.slowDur;
+        if (p.type === 'givre') {
+          p.cible.lent = TOURS.givre.slowDur;
+          for(let k=0;k<6;k++){const a=k*Math.PI/3;particules.push({x:p.cible.x,y:p.cible.y,vx:Math.cos(a)*cell*.7,vy:Math.sin(a)*cell*.7,vie:.28,taille:2,coul:'#bceeff'});}
+        }
         infligerDegats(p.cible, p.dmg);
       }
       projectiles.splice(i, 1);
@@ -806,17 +877,14 @@ function boucle(t) {
       minuteurSpawn = Math.max(0.14, 0.96 - vague * 0.05 - Math.max(0, vague - 4) * 0.06);
     }
   }
-  // fin de vague -> compte à rebours avant la suivante
+  // Chaque assaut se termine par une planification sans limite de temps.
   if (vagueEnCours && !fileSpawn.length && !zombies.length) {
     vagueEnCours = false;
-    compteARebours = 7;
-    majBoutonVague();
+    textes.push({ x: cell*4, y: cell*5, txt: 'VAGUE TERMINÉE', vie: 2 });
+    majBoutonVague(); sauvegarder();
   }
-  if (!vagueEnCours) {
-    compteARebours -= dt;
-    if (compteARebours <= 0) lancerVague();
-    else majBoutonVague();
-  }
+  horlogeVisuelle += dt;
+  if (Math.floor(horlogeVisuelle * 4) !== Math.floor((horlogeVisuelle-dt)*4)) majStrategie();
 
   majZombies(dt);
   if (etat !== 'jeu') return;   // la partie peut se terminer dans majZombies
@@ -839,6 +907,10 @@ function boucle(t) {
     l.y += Math.cos(l.p * 0.5) * dt * 0.015;
   }
 
+  // Budgets d'effets : les dégâts ne sont jamais limités, seulement le décor éphémère.
+  if(particules.length>220)particules.splice(0,particules.length-220);
+  if(textes.length>40)textes.splice(0,textes.length-40);
+  if(morts.length>35)morts.splice(0,morts.length-35);
   dessiner();
 }
 
@@ -851,144 +923,14 @@ function dessiner() {
     ctx.translate((Math.random() - 0.5) * secousse * 22, (Math.random() - 0.5) * secousse * 22);
   }
 
-  // herbe de nuit
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#1a3520'); g.addColorStop(0.6, '#122517'); g.addColorStop(1, '#0b1710');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-
-  // damier discret pour lire la grille
-  ctx.fillStyle = 'rgba(255,255,255,0.02)';
-  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++)
-    if ((c + r) % 2 === 0) ctx.fillRect(c * cell, r * cell, cell, cell);
-
-  // touffes d'herbe
-  ctx.strokeStyle = 'rgba(70,110,60,0.5)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
-  for (const tf of touffes) {
-    const [x, y] = centreCase(tf.c, tf.r);
-    const px = x + tf.dx * cell, py = y + tf.dy * cell;
-    ctx.beginPath();
-    ctx.moveTo(px, py); ctx.lineTo(px - 2.5, py - 4 - tf.t * 3);
-    ctx.moveTo(px, py); ctx.lineTo(px + 0.5, py - 5 - tf.t * 3);
-    ctx.moveTo(px, py); ctx.lineTo(px + 3, py - 3.5 - tf.t * 3);
-    ctx.stroke();
+  if (!decorCache) {
+    decorCache = document.createElement('canvas');
+    decorCache.width = cv.width; decorCache.height = cv.height;
+    const pinceau = decorCache.getContext('2d'); pinceau.setTransform(dpr,0,0,dpr,0,0);
+    dessinerDecor(pinceau);
   }
-
-  // lune avec halo et cratères
-  ctx.save();
-  const lx = W - cell * 0.7, ly = cell * 0.55;
-  const halo = ctx.createRadialGradient(lx, ly, cell * 0.2, lx, ly, cell * 1.4);
-  halo.addColorStop(0, 'rgba(220,235,255,0.28)'); halo.addColorStop(1, 'rgba(220,235,255,0)');
-  ctx.fillStyle = halo;
-  ctx.beginPath(); ctx.arc(lx, ly, cell * 1.4, 0, 7); ctx.fill();
-  ctx.shadowColor = 'rgba(230,240,255,.8)'; ctx.shadowBlur = cell * 0.9;
-  ctx.fillStyle = '#e9f2ff';
-  ctx.beginPath(); ctx.arc(lx, ly, cell * 0.32, 0, 7); ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = 'rgba(170,190,210,0.5)';
-  ctx.beginPath(); ctx.arc(lx - cell * 0.09, ly - cell * 0.05, cell * 0.06, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(lx + cell * 0.08, ly + cell * 0.09, cell * 0.045, 0, 7); ctx.fill();
-  ctx.restore();
-
-  // le chemin (terre battue)
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-  ctx.strokeStyle = '#54402c'; ctx.lineWidth = cell * 0.84;
-  tracerChemin();
-  ctx.strokeStyle = '#6d563e'; ctx.lineWidth = cell * 0.74;
-  tracerChemin();
-  ctx.strokeStyle = '#7d6647'; ctx.lineWidth = cell * 0.5;
-  tracerChemin();
-  // traces de pas au centre
-  ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 2;
-  ctx.setLineDash([5, 11]); tracerChemin(); ctx.setLineDash([]);
-
-  // l'entrée des zombies : une grille de cimetière rouillée
-  const [ex, ey] = centreCase(0, 1);
-  ctx.fillStyle = '#05080a';
-  ctx.fillRect(0, ey - cell * 0.48, cell * 0.22, cell * 0.96);
-  ctx.strokeStyle = '#39424a'; ctx.lineWidth = 2.5;
-  for (let i = -1; i <= 1; i++) {
-    ctx.beginPath(); ctx.moveTo(1, ey + i * cell * 0.3); ctx.lineTo(cell * 0.2, ey + i * cell * 0.3); ctx.stroke();
-  }
-
-  // pierres tombales (certaines penchées, avec RIP)
-  for (const tb of tombes) {
-    const [x, y] = centreCase(tb.c, tb.r);
-    const px = x + tb.dx * cell, py = y + tb.dy * cell;
-    ctx.save();
-    ctx.translate(px, py); ctx.rotate(tb.incl);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath(); ctx.ellipse(0, cell * 0.16, cell * 0.2, cell * 0.06, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = tb.t > 0.5 ? '#66767d' : '#4d5a61';
-    ctx.beginPath();
-    ctx.moveTo(-cell * 0.16, cell * 0.15);
-    ctx.lineTo(-cell * 0.16, -cell * 0.06);
-    ctx.arc(0, -cell * 0.06, cell * 0.16, Math.PI, 0);
-    ctx.lineTo(cell * 0.16, cell * 0.15);
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
-    ctx.font = 'bold ' + (cell * 0.11) + 'px serif'; ctx.textAlign = 'center';
-    ctx.fillText('RIP', 0, cell * 0.02);
-    ctx.restore();
-  }
-
-  // croix en bois
-  for (const cr of croix) {
-    const [x, y] = centreCase(cr.c, cr.r);
-    const px = x + cr.dx * cell, py = y + cr.dy * cell;
-    ctx.save();
-    ctx.translate(px, py); ctx.rotate(cr.incl);
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath(); ctx.ellipse(0, cell * 0.17, cell * 0.13, cell * 0.045, 0, 0, 7); ctx.fill();
-    ctx.fillStyle = cr.t > 0.5 ? '#5d4a33' : '#4a3a28';
-    ctx.fillRect(-cell * 0.035, -cell * 0.2, cell * 0.07, cell * 0.37);
-    ctx.fillRect(-cell * 0.12, -cell * 0.11, cell * 0.24, cell * 0.06);
-    ctx.restore();
-  }
-
-  // arbres morts
-  for (const ar of arbres) {
-    const [x, y] = centreCase(ar.c, ar.r);
-    const px = x + ar.dx * cell, py = y + ar.dy * cell;
-    ctx.strokeStyle = '#241a12'; ctx.lineCap = 'round';
-    ctx.lineWidth = cell * 0.09;
-    ctx.beginPath(); ctx.moveTo(px, py + cell * 0.3); ctx.lineTo(px, py - cell * 0.22); ctx.stroke();
-    ctx.lineWidth = cell * 0.05;
-    ctx.beginPath();
-    ctx.moveTo(px, py - cell * 0.05); ctx.lineTo(px - cell * (0.18 + ar.t * 0.1), py - cell * 0.28);
-    ctx.moveTo(px, py - cell * 0.12); ctx.lineTo(px + cell * (0.16 + ar.t * 0.12), py - cell * 0.32);
-    ctx.stroke();
-  }
-
-  // la base (la maison à protéger)
-  const [bx, by] = centreCase(1, 12);
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.beginPath(); ctx.ellipse(bx, by + cell * 0.38, cell * 0.55, cell * 0.14, 0, 0, 7); ctx.fill();
-  ctx.fillStyle = '#7d2b2b';   // murs
-  ctx.fillRect(bx - cell * 0.4, by - cell * 0.15, cell * 0.8, cell * 0.5);
-  ctx.fillStyle = '#5e1f1f';   // toit
-  ctx.beginPath();
-  ctx.moveTo(bx - cell * 0.5, by - cell * 0.13);
-  ctx.lineTo(bx, by - cell * 0.52);
-  ctx.lineTo(bx + cell * 0.5, by - cell * 0.13);
-  ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#3a1414';   // porte
-  ctx.fillRect(bx - cell * 0.08, by + cell * 0.08, cell * 0.16, cell * 0.27);
-  // fenêtre allumée
-  ctx.save();
-  ctx.shadowColor = 'rgba(255,210,110,.9)'; ctx.shadowBlur = cell * 0.25;
-  ctx.fillStyle = '#ffd76a';
-  ctx.fillRect(bx + cell * 0.14, by - cell * 0.02, cell * 0.14, cell * 0.14);
-  ctx.restore();
-  ctx.strokeStyle = '#3a1414'; ctx.lineWidth = 1.5;
-  ctx.strokeRect(bx + cell * 0.14, by - cell * 0.02, cell * 0.14, cell * 0.14);
-  ctx.fillStyle = '#ffd76a'; ctx.font = 'bold ' + (cell * 0.28) + 'px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4;
-  ctx.fillText('BASE', bx, by + cell * 0.72);
-  ctx.restore();
-
+  ctx.drawImage(decorCache,0,0,W,H);
+  dessinerZones();
   // aperçu de pose (case survolée)
   // (pas de survol au tactile : l'aperçu est le cercle de portée sous le doigt au moment du tap)
 
@@ -1141,6 +1083,12 @@ function dessiner() {
     ctx.restore();
   }
 
+  // Bancs de brume légère, trois dégradés seulement par image.
+  for(let k=0;k<3;k++){
+    const x=W*(.25+.5*Math.sin(horlogeVisuelle*.04+k*2)),y=H*(.22+k*.28);
+    const f=ctx.createRadialGradient(x,y,0,x,y,W*.65);f.addColorStop(0,'#b2dce80c');f.addColorStop(1,'#b2dce800');ctx.fillStyle=f;
+    ctx.save();ctx.translate(0,y*.65);ctx.scale(1,.35);ctx.fillRect(0,0,W,H*3);ctx.restore();
+  }
   // vignette d'ambiance (coins sombres)
   const vg = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.75);
   vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,0.42)');
@@ -1149,6 +1097,192 @@ function dessiner() {
   ctx.restore();   // fin de la secousse
 }
 
+function dessinerDecor(ctx) {
+  const W=COLS*cell,H=ROWS*cell;
+  function tracerChemin(){ctx.beginPath();ctx.moveTo(...cheminPx[0]);for(let i=1;i<cheminPx.length;i++)ctx.lineTo(...cheminPx[i]);ctx.stroke();}
+  // herbe de nuit
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#19363e'); g.addColorStop(0.6, '#122733'); g.addColorStop(1, '#0c1826');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+
+  // damier discret pour lire la grille
+  ctx.fillStyle = 'rgba(255,255,255,0.02)';
+  for (let c = 0; c < COLS; c++) for (let r = 0; r < ROWS; r++)
+    if ((c + r) % 2 === 0) ctx.fillRect(c * cell, r * cell, cell, cell);
+
+  // touffes d'herbe
+  ctx.strokeStyle = 'rgba(70,110,60,0.5)'; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
+  for (const tf of touffes) {
+    const [x, y] = centreCase(tf.c, tf.r);
+    const px = x + tf.dx * cell, py = y + tf.dy * cell;
+    ctx.beginPath();
+    ctx.moveTo(px, py); ctx.lineTo(px - 2.5, py - 4 - tf.t * 3);
+    ctx.moveTo(px, py); ctx.lineTo(px + 0.5, py - 5 - tf.t * 3);
+    ctx.moveTo(px, py); ctx.lineTo(px + 3, py - 3.5 - tf.t * 3);
+    ctx.stroke();
+  }
+
+  // lune avec halo et cratères
+  ctx.save();
+  const lx = W - cell * 0.7, ly = cell * 0.55;
+  const halo = ctx.createRadialGradient(lx, ly, cell * 0.2, lx, ly, cell * 1.4);
+  halo.addColorStop(0, 'rgba(220,235,255,0.28)'); halo.addColorStop(1, 'rgba(220,235,255,0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(lx, ly, cell * 1.4, 0, 7); ctx.fill();
+  ctx.shadowColor = 'rgba(230,240,255,.8)'; ctx.shadowBlur = cell * 0.9;
+  ctx.fillStyle = '#e9f2ff';
+  ctx.beginPath(); ctx.arc(lx, ly, cell * 0.32, 0, 7); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(170,190,210,0.5)';
+  ctx.beginPath(); ctx.arc(lx - cell * 0.09, ly - cell * 0.05, cell * 0.06, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(lx + cell * 0.08, ly + cell * 0.09, cell * 0.045, 0, 7); ctx.fill();
+  ctx.restore();
+
+  // le chemin (terre battue)
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#18252c'; ctx.lineWidth = cell * 0.84;
+  tracerChemin();
+  ctx.strokeStyle = '#39474c'; ctx.lineWidth = cell * 0.74;
+  tracerChemin();
+  ctx.strokeStyle = '#4b595b'; ctx.lineWidth = cell * 0.5;
+  tracerChemin();
+  // traces de pas au centre
+  ctx.strokeStyle = 'rgba(0,0,0,0.22)'; ctx.lineWidth = 2;
+  ctx.setLineDash([5, 11]); tracerChemin(); ctx.setLineDash([]);
+
+  // Pavés irréguliers, joints profonds et mousse déterministes.
+  for (let c=0;c<COLS;c++) for(let r=0;r<ROWS;r++) {
+    const route=CASES_CHEMIN.has(c+','+r), x=c*cell, y=r*cell;
+    let seed=(c+1)*171+(r+1)*917;
+    const alea=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+    if(route){
+      for(let row=0;row<3;row++) for(let col=0;col<3;col++) {
+        const px=x+col*cell/3+1,py=y+row*cell/3+1;
+        ctx.fillStyle=['#536264','#455457','#5d6867','#3e5054'][Math.floor(alea()*4)];
+        ctx.fillRect(px,py,cell/3-2,cell/3-2);
+        ctx.fillStyle='#a8c1b52c';ctx.fillRect(px,py,cell/3-3,1);
+        ctx.fillStyle='#172c3380';ctx.fillRect(px,py+cell/3-4,cell/3-2,2);
+      }
+    } else {
+      for(let k=0;k<20;k++){
+        const px=x+alea()*cell,py=y+alea()*cell;
+        ctx.fillStyle=k%3?'#47776828':'#09172370';
+        ctx.fillRect(px,py,1+alea()*3,1+alea()*2);
+      }
+      ctx.strokeStyle='#5b878013';ctx.lineWidth=.7;ctx.strokeRect(x+.5,y+.5,cell-1,cell-1);
+    }
+  }
+
+  // l'entrée des zombies : une grille de cimetière rouillée
+  const [ex, ey] = centreCase(0, 1);
+  ctx.fillStyle = '#05080a';
+  ctx.fillRect(0, ey - cell * 0.48, cell * 0.22, cell * 0.96);
+  ctx.strokeStyle = '#39424a'; ctx.lineWidth = 2.5;
+  for (let i = -1; i <= 1; i++) {
+    ctx.beginPath(); ctx.moveTo(1, ey + i * cell * 0.3); ctx.lineTo(cell * 0.2, ey + i * cell * 0.3); ctx.stroke();
+  }
+
+  // pierres tombales (certaines penchées, avec RIP)
+  for (const tb of tombes) {
+    const [x, y] = centreCase(tb.c, tb.r);
+    const px = x + tb.dx * cell, py = y + tb.dy * cell;
+    ctx.save();
+    ctx.translate(px, py); ctx.rotate(tb.incl);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(0, cell * 0.16, cell * 0.2, cell * 0.06, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = tb.t > 0.5 ? '#66767d' : '#4d5a61';
+    ctx.beginPath();
+    ctx.moveTo(-cell * 0.16, cell * 0.15);
+    ctx.lineTo(-cell * 0.16, -cell * 0.06);
+    ctx.arc(0, -cell * 0.06, cell * 0.16, Math.PI, 0);
+    ctx.lineTo(cell * 0.16, cell * 0.15);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.font = 'bold ' + (cell * 0.11) + 'px serif'; ctx.textAlign = 'center';
+    ctx.fillText('RIP', 0, cell * 0.02);
+    ctx.restore();
+  }
+
+  // croix en bois
+  for (const cr of croix) {
+    const [x, y] = centreCase(cr.c, cr.r);
+    const px = x + cr.dx * cell, py = y + cr.dy * cell;
+    ctx.save();
+    ctx.translate(px, py); ctx.rotate(cr.incl);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath(); ctx.ellipse(0, cell * 0.17, cell * 0.13, cell * 0.045, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = cr.t > 0.5 ? '#5d4a33' : '#4a3a28';
+    ctx.fillRect(-cell * 0.035, -cell * 0.2, cell * 0.07, cell * 0.37);
+    ctx.fillRect(-cell * 0.12, -cell * 0.11, cell * 0.24, cell * 0.06);
+    ctx.restore();
+  }
+
+  // arbres morts
+  for (const ar of arbres) {
+    const [x, y] = centreCase(ar.c, ar.r);
+    const px = x + ar.dx * cell, py = y + ar.dy * cell;
+    ctx.strokeStyle = '#241a12'; ctx.lineCap = 'round';
+    ctx.lineWidth = cell * 0.09;
+    ctx.beginPath(); ctx.moveTo(px, py + cell * 0.3); ctx.lineTo(px, py - cell * 0.22); ctx.stroke();
+    ctx.lineWidth = cell * 0.05;
+    ctx.beginPath();
+    ctx.moveTo(px, py - cell * 0.05); ctx.lineTo(px - cell * (0.18 + ar.t * 0.1), py - cell * 0.28);
+    ctx.moveTo(px, py - cell * 0.12); ctx.lineTo(px + cell * (0.16 + ar.t * 0.12), py - cell * 0.32);
+    ctx.stroke();
+  }
+
+  // la base (la maison à protéger)
+  const [bx, by] = centreCase(1, 12);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(bx, by + cell * 0.38, cell * 0.55, cell * 0.14, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = '#7d2b2b';   // murs
+  ctx.fillRect(bx - cell * 0.4, by - cell * 0.15, cell * 0.8, cell * 0.5);
+  ctx.fillStyle = '#5e1f1f';   // toit
+  ctx.beginPath();
+  ctx.moveTo(bx - cell * 0.5, by - cell * 0.13);
+  ctx.lineTo(bx, by - cell * 0.52);
+  ctx.lineTo(bx + cell * 0.5, by - cell * 0.13);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#3a1414';   // porte
+  ctx.fillRect(bx - cell * 0.08, by + cell * 0.08, cell * 0.16, cell * 0.27);
+  // fenêtre allumée
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,210,110,.9)'; ctx.shadowBlur = cell * 0.25;
+  ctx.fillStyle = '#ffd76a';
+  ctx.fillRect(bx + cell * 0.14, by - cell * 0.02, cell * 0.14, cell * 0.14);
+  ctx.restore();
+  ctx.strokeStyle = '#3a1414'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx + cell * 0.14, by - cell * 0.02, cell * 0.14, cell * 0.14);
+  ctx.fillStyle = '#ffd76a'; ctx.font = 'bold ' + (cell * 0.28) + 'px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,.8)'; ctx.shadowBlur = 4;
+  ctx.fillText('BASE', bx, by + cell * 0.72);
+  ctx.restore();
+
+  // Lanternes de cuivre : petites sources chaudes contrastant avec la lune.
+  for(const [c,r] of [[7,2],[0,5],[7,8],[0,11]]) {
+    const [x,y]=centreCase(c,r);
+    const h=ctx.createRadialGradient(x,y,0,x,y,cell*1.15);
+    h.addColorStop(0,'#f8bc5840');h.addColorStop(1,'#f8bc5800');ctx.fillStyle=h;ctx.fillRect(x-cell*1.15,y-cell*1.15,cell*2.3,cell*2.3);
+    ctx.fillStyle='#0a141e';ctx.fillRect(x-2,y-cell*.17,4,cell*.55);
+    ctx.fillStyle='#856844';ctx.fillRect(x-cell*.12,y-cell*.26,cell*.24,cell*.28);
+    ctx.fillStyle='#ffe4a1';ctx.fillRect(x-cell*.07,y-cell*.22,cell*.14,cell*.18);
+    ctx.fillStyle='#15222e';ctx.beginPath();ctx.moveTo(x-cell*.17,y-cell*.27);ctx.lineTo(x,y-cell*.41);ctx.lineTo(x+cell*.17,y-cell*.27);ctx.fill();
+  }
+ }
+// Les cases couvertes par plusieurs tours rendent lisible la future zone de feu.
+function dessinerZones(){
+  if(vagueEnCours && !enPause) return;
+  for(const cle of CASES_CHEMIN){
+    const [c,r]=cle.split(',').map(Number),[x,y]=centreCase(c,r);
+    const couverture=tours.filter(t=>!TOURS[t.type].mur&&Math.hypot(t.x-x,t.y-y)<=(TOURS[t.type].range+.12*(t.niveau-1))*cell).length;
+    if(!couverture)continue;
+    ctx.fillStyle=couverture>1?'#f2be5036':'#7cdac71b';ctx.fillRect(c*cell+2,r*cell+2,cell-4,cell-4);
+    ctx.fillStyle=couverture>1?'#f4d397':'#9ed4ce';ctx.font='bold '+cell*.18+'px sans-serif';ctx.textAlign='right';ctx.fillText(couverture+'×',x+cell*.36,y+cell*.36);
+  }
+}
 function tracerChemin() {
   ctx.beginPath();
   ctx.moveTo(cheminPx[0][0], cheminPx[0][1]);
@@ -1156,7 +1290,8 @@ function tracerChemin() {
   ctx.stroke();
 }
 
-function dessinerMur(t) {
+function dessinerMur(t, pinceau = ctx) {
+  const ctx = pinceau;
   const s = cell, ratio = Math.max(0, t.pv / TOURS[t.type].pv), bois = t.type === 'palissade';
   ctx.save(); ctx.translate(t.x, t.y);
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.fillRect(-s * .44, -s * .3, s * .9, s * .74);
@@ -1180,6 +1315,10 @@ function dessinerMur(t) {
     ctx.fillRect(s * .16, -s * .39, s * .14, s * .13);
     ctx.fillStyle = '#496446'; ctx.fillRect(-s * .4, s * .26, s * .3, s * .07);
   }
+  ctx.strokeStyle=bois?'#d4aa6860':'#d7eceb60';ctx.lineWidth=1;
+  for(let k=0;k<5;k++){const x=(-.35+k*.16)*s;ctx.beginPath();ctx.moveTo(x,-s*.23);ctx.lineTo(x,s*.25);ctx.stroke();}
+  ctx.fillStyle='#18222c';for(const x of [-.31,.31])for(const y of [-.06,.2]){ctx.beginPath();ctx.arc(x*s,y*s,s*.028,0,7);ctx.fill();}
+  if(ratio<.35){ctx.fillStyle='#16212b';ctx.beginPath();ctx.moveTo(-s*.4,-s*.34);ctx.lineTo(-s*.1,-s*.15);ctx.lineTo(-s*.05,-s*.4);ctx.fill();}
   if (ratio < .7) {
     ctx.strokeStyle = '#201d19'; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(s * .1, -s * .3); ctx.lineTo(-s * .04, -s * .05);
@@ -1191,7 +1330,8 @@ function dessinerMur(t) {
   ctx.restore();
 }
 
-function dessinerTour(t) {
+function dessinerTour(t, pinceau = ctx) {
+  const ctx = pinceau;
   const s = cell;
   const recul = Math.max(0, t.recul) * s * 0.07;   // recul du canon / de l'arme au tir
 
@@ -1203,7 +1343,9 @@ function dessinerTour(t) {
   ctx.fillStyle = sg;
   ctx.beginPath(); ctx.arc(t.x, t.y, s * 0.4, 0, 7); ctx.fill();
   ctx.strokeStyle = '#1c281e'; ctx.lineWidth = 2; ctx.stroke();
-  ctx.fillStyle = '#22301f';
+  ctx.strokeStyle='#91adb680';ctx.lineWidth=1;ctx.beginPath();ctx.arc(t.x,t.y-s*.04,s*.37,Math.PI,Math.PI*2);ctx.stroke();
+  for(let k=0;k<6;k++){const a=k*Math.PI/3;ctx.fillStyle='#adbdad';ctx.beginPath();ctx.arc(t.x+Math.cos(a)*s*.34,t.y+Math.sin(a)*s*.34,s*.026,0,7);ctx.fill();}
+  ctx.fillStyle = '#142c39';
   ctx.beginPath(); ctx.arc(t.x, t.y, s * 0.3, 0, 7); ctx.fill();
 
   ctx.save();
@@ -1311,127 +1453,65 @@ function dessinerTour(t) {
   }
 }
 
+/* Sprites peints : volumes, contre-jour, silhouettes et coups de bras distincts. */
 function dessinerZombie(z) {
-  const def = ZOMBIES[z.type];
-  const r = z.r;
-  const gel = z.lent > 0;
-  const peau = gel ? '#8fd0de' : def.coul;
-  const peauFonce = gel ? '#5fa8ba' : nuance(def.coul, 0.72);
-  const habit = gel ? nuance(def.habit, 1.25) : def.habit;
-  // Le sprite reste debout à l'écran, même quand le chemin tourne.
-  const m = z.marche;
-  const bob = Math.abs(Math.sin(m)) * r * 0.08;         // rebond de marche
-  const balancement = Math.sin(m);                       // jambes / bras
-
-  // ombre portée
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
-  ctx.beginPath(); ctx.ellipse(z.x, z.y + r * 0.8, r * 0.95, r * 0.32, 0, 0, 7); ctx.fill();
-
-  ctx.save();
-  ctx.translate(z.x, z.y - bob);
-  const largeur = z.type === 'tank' ? 1.3 : (z.type === 'coureur' ? 0.85 : 1);
-  ctx.scale(largeur, 1);
-
-  // jambes (cycle de marche)
-  ctx.strokeStyle = nuance(def.habit, 0.7); ctx.lineWidth = r * 0.3; ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.22, r * 0.3);
-  ctx.lineTo(-r * 0.22 + balancement * r * 0.35, r * 0.85);
-  ctx.moveTo(r * 0.22, r * 0.3);
-  ctx.lineTo(r * 0.22 - balancement * r * 0.35, r * 0.85);
-  ctx.stroke();
-
-  // bras tendus en avant (vers +y, sa direction), qui se balancent
-  ctx.strokeStyle = peau; ctx.lineWidth = r * 0.24;
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.5, -r * 0.15);
-  ctx.lineTo(-r * 0.45 + balancement * r * 0.15, r * 0.72);
-  ctx.moveTo(r * 0.5, -r * 0.15);
-  ctx.lineTo(r * 0.45 - balancement * r * 0.15, r * 0.72);
-  ctx.stroke();
-  ctx.fillStyle = peauFonce;   // mains
-  ctx.beginPath(); ctx.arc(-r * 0.45 + balancement * r * 0.15, r * 0.78, r * 0.15, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(r * 0.45 - balancement * r * 0.15, r * 0.78, r * 0.15, 0, 7); ctx.fill();
-
-  // torse (vêtement en lambeaux)
-  ctx.fillStyle = habit;
-  ctx.beginPath(); ctx.ellipse(0, r * 0.05, r * 0.62, r * 0.58, 0, 0, 7); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.strokeStyle = nuance(def.habit, 0.6); ctx.lineWidth = r * 0.09;   // déchirures
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.3, -r * 0.2); ctx.lineTo(-r * 0.1, r * 0.1);
-  ctx.moveTo(r * 0.25, -r * 0.05); ctx.lineTo(r * 0.35, r * 0.25);
-  ctx.stroke();
-  if (z.type === 'tank') {   // plaques d'épaule du tank
-    ctx.fillStyle = '#565c68';
-    ctx.beginPath(); ctx.arc(-r * 0.55, -r * 0.28, r * 0.2, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(r * 0.55, -r * 0.28, r * 0.2, 0, 7); ctx.fill();
+  const def=ZOMBIES[z.type],r=z.r,gel=z.lent>0,m=z.marche;
+  const attaque=z.attaque, swing=attaque?Math.sin(m*2.3):Math.sin(m);
+  const peau=gel?'#a4ddeb':def.coul,habit=def.habit;
+  ctx.save();ctx.translate(z.x,z.y);
+  ctx.fillStyle='#02091270';ctx.beginPath();ctx.ellipse(r*.12,r*.74,r*1.05,r*.32,0,0,7);ctx.fill();
+  if(z.type==='boss'){
+    const h=ctx.createRadialGradient(0,0,0,0,0,r*1.9);h.addColorStop(0,'#b54aab28');h.addColorStop(1,'#b54aab00');ctx.fillStyle=h;ctx.fillRect(-r*2,-r*2,r*4,r*4);
   }
-
-  // tête
-  const inclinaison = z.type === 'coureur' ? r * 0.18 : 0;   // le coureur se penche en avant
-  ctx.fillStyle = peau;
-  ctx.beginPath(); ctx.arc(0, -r * 0.72 + inclinaison, r * 0.48, 0, 7); ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.fillStyle = peauFonce;   // mâchoire
-  ctx.beginPath(); ctx.arc(0, -r * 0.52 + inclinaison, r * 0.26, 0.2, Math.PI - 0.2); ctx.fill();
-  if (z.type === 'normal') {   // restes de cheveux
-    ctx.fillStyle = '#2e3d24';
-    ctx.beginPath(); ctx.arc(0, -r * 0.85, r * 0.42, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+  ctx.translate(attaque?swing*r*.07:0,-Math.abs(Math.sin(m))*r*.1);
+  ctx.scale(z.type==='tank'?1.28:z.type==='coureur'?.83:1,1);
+  if(z.type==='coureur')ctx.rotate(.12);
+  // Bottes et pantalons : deux jambes réellement articulées.
+  ctx.lineCap='round';
+  for(const cote of [-1,1]){
+    const pas=attaque?0:swing*cote*r*.27;
+    ctx.strokeStyle='#172331';ctx.lineWidth=r*.32;ctx.beginPath();ctx.moveTo(cote*r*.25,r*.22);ctx.lineTo(cote*r*.28+pas,r*.7);ctx.stroke();
+    ctx.fillStyle='#0b1520';ctx.beginPath();ctx.ellipse(cote*r*.28+pas,r*.78,r*.25,r*.13,-.12,0,7);ctx.fill();
+    ctx.strokeStyle=nuance(peau,.6);ctx.lineWidth=r*.27;ctx.beginPath();ctx.moveTo(cote*r*.52,-r*.28);
+    const mainY=attaque?r*(.1+swing*.4):r*.43;
+    ctx.lineTo(cote*r*.7,mainY);ctx.stroke();
+    ctx.strokeStyle=peau;ctx.lineWidth=r*.14;ctx.beginPath();ctx.moveTo(cote*r*.54,-r*.28);ctx.lineTo(cote*r*.69,mainY-r*.05);ctx.stroke();
+    ctx.fillStyle=peau;ctx.beginPath();ctx.ellipse(cote*r*.7,mainY,r*.16,r*.2,cote*.2,0,7);ctx.fill();
   }
-  // yeux rouges luisants
-  ctx.save();
-  ctx.shadowColor = '#ff3030'; ctx.shadowBlur = r * 0.3;
-  ctx.fillStyle = '#ff4040';
-  ctx.beginPath(); ctx.arc(-r * 0.18, -r * 0.78 + inclinaison, r * 0.09, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(r * 0.18, -r * 0.78 + inclinaison, r * 0.09, 0, 7); ctx.fill();
+  // Manteau en lambeaux, modelé par un dégradé latéral.
+  const g=ctx.createLinearGradient(-r*.6,-r*.5,r*.65,r*.4);g.addColorStop(0,nuance(habit,1.8));g.addColorStop(.4,habit);g.addColorStop(1,nuance(habit,.55));ctx.fillStyle=g;
+  ctx.beginPath();ctx.moveTo(-r*.51,-r*.49);ctx.quadraticCurveTo(0,-r*.7,r*.51,-r*.49);ctx.lineTo(r*.63,r*.43);ctx.lineTo(r*.32,r*.33);ctx.lineTo(r*.16,r*.52);ctx.lineTo(-r*.08,r*.35);ctx.lineTo(-r*.4,r*.47);ctx.lineTo(-r*.62,r*.34);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#08141d';ctx.lineWidth=r*.08;ctx.stroke();
+  ctx.strokeStyle='#c9d5c444';ctx.lineWidth=r*.05;ctx.beginPath();ctx.moveTo(-r*.43,-r*.35);ctx.lineTo(-r*.34,r*.14);ctx.stroke();
+  ctx.fillStyle='#c5b99e';for(let k=0;k<3;k++){ctx.beginPath();ctx.arc(r*.06,-r*.18+k*r*.18,r*.035,0,7);ctx.fill();}
+  if(z.type==='tank'){
+    for(const cote of [-1,1]){ctx.fillStyle='#6f8290';ctx.fillRect(cote*r*.55-r*.22,-r*.5,r*.44,r*.34);ctx.fillStyle='#c1ccd0';ctx.fillRect(cote*r*.55-r*.2,-r*.5,r*.4,r*.05);ctx.fillStyle='#293744';ctx.beginPath();ctx.arc(cote*r*.55,-r*.32,r*.055,0,7);ctx.fill();}
+    ctx.fillStyle='#566571';ctx.fillRect(-r*.4,-r*.23,r*.8,r*.36);ctx.strokeStyle='#9cacb255';ctx.strokeRect(-r*.4,-r*.23,r*.8,r*.36);
+  }
+  // Tête : oreilles, ombre de mâchoire et lumière froide sur le front.
+  const y=-r*.82;
+  ctx.fillStyle=nuance(peau,.7);for(const cote of [-1,1]){ctx.beginPath();ctx.ellipse(cote*r*.46,y+r*.09,r*.12,r*.18,0,0,7);ctx.fill();}
+  const tg=ctx.createRadialGradient(-r*.18,y-r*.2,r*.02,0,y,r*.64);tg.addColorStop(0,gel?'#dcf8fc':nuance(peau,1.4));tg.addColorStop(.5,peau);tg.addColorStop(1,nuance(peau,.45));ctx.fillStyle=tg;
+  ctx.beginPath();ctx.ellipse(0,y,r*.48,r*.52,-.1,0,7);ctx.fill();ctx.strokeStyle='#0b1821';ctx.lineWidth=r*.07;ctx.stroke();
+  ctx.fillStyle='#102331';ctx.beginPath();ctx.ellipse(-r*.19,y+r*.03,r*.15,r*.11,-.15,0,7);ctx.ellipse(r*.19,y+r*.03,r*.15,r*.11,.15,0,7);ctx.fill();
+  ctx.fillStyle=gel?'#d2fbff':'#ff9868';for(const cote of [-1,1]){ctx.beginPath();ctx.arc(cote*r*.19,y+r*.025,r*.059,0,7);ctx.fill();}
+  ctx.fillStyle='#16252a';ctx.fillRect(-r*.2,y+r*.25,r*.4,r*.13);ctx.fillStyle='#ddd8b9';for(let k=0;k<3;k++)ctx.fillRect((-0.17+k*.12)*r,y+r*.25,r*.075,r*.07);
+  ctx.strokeStyle='#18262a';ctx.lineWidth=r*.04;ctx.beginPath();ctx.moveTo(r*.05,y-r*.29);ctx.lineTo(r*.22,y-r*.17);ctx.moveTo(r*.11,y-r*.32);ctx.lineTo(r*.07,y-r*.2);ctx.stroke();
+  if(z.type==='normal'){ctx.fillStyle='#23392c';ctx.beginPath();ctx.arc(0,y-r*.1,r*.45,Math.PI,Math.PI*1.94);ctx.lineTo(r*.15,y-r*.33);ctx.lineTo(-r*.1,y-r*.25);ctx.fill();}
+  if(z.type==='coureur'){ctx.fillStyle='#bd5648';ctx.fillRect(-r*.46,y-r*.22,r*.91,r*.12);ctx.beginPath();ctx.moveTo(r*.4,y-r*.17);ctx.lineTo(r*.87,y-r*.37);ctx.lineTo(r*.75,y);ctx.fill();}
+  if(z.type==='boss'){
+    ctx.fillStyle='#ab7d40';ctx.fillRect(-r*.47,y-r*.46,r*.94,r*.17);
+    const or=ctx.createLinearGradient(0,y-r*.9,0,y-r*.35);or.addColorStop(0,'#fff0ad');or.addColorStop(1,'#b27c36');ctx.fillStyle=or;
+    ctx.beginPath();ctx.moveTo(-r*.48,y-r*.4);ctx.lineTo(-r*.58,y-r*.85);ctx.lineTo(-r*.22,y-r*.64);ctx.lineTo(0,y-r*.99);ctx.lineTo(r*.22,y-r*.64);ctx.lineTo(r*.58,y-r*.85);ctx.lineTo(r*.48,y-r*.4);ctx.fill();
+    ctx.fillStyle='#df667b';ctx.beginPath();ctx.arc(0,y-r*.55,r*.09,0,7);ctx.fill();
+  }
+  if(gel){ctx.strokeStyle='#c9f4ffb0';ctx.lineWidth=r*.055;for(let k=0;k<5;k++){const a=k*1.26;ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.6,Math.sin(a)*r*.7);ctx.lineTo(Math.cos(a)*r*.9,Math.sin(a)*r);ctx.stroke();}}
+  if(z.flash>0){ctx.globalAlpha=Math.min(.5,z.flash*.5);ctx.fillStyle='#e7f7ff';ctx.beginPath();ctx.ellipse(0,-r*.2,r*.7,r,0,0,7);ctx.fill();}
   ctx.restore();
-  // dents
-  ctx.fillStyle = '#e8e4d0';
-  ctx.fillRect(-r * 0.14, -r * 0.55 + inclinaison, r * 0.09, r * 0.08);
-  ctx.fillRect(r * 0.05, -r * 0.55 + inclinaison, r * 0.09, r * 0.08);
-
-  // couronne du boss
-  if (z.type === 'boss') {
-    ctx.fillStyle = '#ffd76a';
-    ctx.beginPath();
-    for (let i = 0; i < 3; i++) {
-      const ax = (i - 1) * r * 0.3;
-      ctx.moveTo(ax - r * 0.13, -r * 1.1);
-      ctx.lineTo(ax, -r * 1.42);
-      ctx.lineTo(ax + r * 0.13, -r * 1.1);
-    }
-    ctx.fill();
-    ctx.strokeStyle = '#a8852a'; ctx.lineWidth = 1; ctx.stroke();
-  }
-
-  // gangivre gelé : couche de glace
-  if (gel) {
-    ctx.fillStyle = 'rgba(180,230,255,0.28)';
-    ctx.beginPath(); ctx.arc(0, 0, r * 1.05, 0, 7); ctx.fill();
-    ctx.strokeStyle = 'rgba(220,245,255,0.7)'; ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.7, -r * 0.3); ctx.lineTo(-r * 0.45, r * 0.1);
-    ctx.moveTo(r * 0.6, -r * 0.5); ctx.lineTo(r * 0.4, 0);
-    ctx.stroke();
-  }
-
-  // flash blanc quand il est touché
-  if (z.flash > 0) {
-    ctx.globalAlpha = Math.min(0.75, z.flash);
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.arc(0, -r * 0.1, r * 1.05, 0, 7); ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-  ctx.restore();
-
-  // barre de vie
-  if (z.pv < z.pvMax) {
-    const w = r * 2.2;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(z.x - w / 2 - 1, z.y - r * 1.75 - 1, w + 2, 6);
-    ctx.fillStyle = z.pv / z.pvMax > 0.4 ? '#7ec850' : '#ff5a5a';
-    ctx.fillRect(z.x - w / 2, z.y - r * 1.75, w * Math.max(0, z.pv / z.pvMax), 4);
+  if(z.pv<z.pvMax||z.type==='boss'){
+    const w=r*2.2,y=z.y-r*(z.type==='boss'?2.15:1.63);
+    ctx.fillStyle='#08131e';ctx.fillRect(z.x-w/2-1,y-1,w+2,5);
+    ctx.fillStyle=z.pv/z.pvMax>.4?'#c7d78b':'#f09377';ctx.fillRect(z.x-w/2,y,w*Math.max(0,z.pv/z.pvMax),3);
   }
 }
 
@@ -1442,10 +1522,10 @@ function ecranTitre() {
   const save = lireSauvegarde();
   ecran.classList.remove('hidden');
   ecran.innerHTML =
-    '<h1>🧟 ZOMBIE<br>DEFENSE</h1>' +
+    '<div style="letter-spacing:4px;font-size:10px;color:#a0bbc6">LES NUITS DU CIMETIÈRE</div><h1>ZOMBIE<br>DEFENSE</h1>' +
     '<div class="sous">Défends ta base contre des vagues infinies de zombies.<br>' +
     'Pose tes tours sur l’herbe et tes murs sur le chemin.<br>Palissade : 35$ / 240 PV. Rempart : 140$ / 1200 PV.<br>' +
-    'Chaque zombie tué rapporte de l\'argent. Tiens le plus longtemps possible !</div>' +
+    'Prépare sans chrono. Observe la prochaine horde.<br>Combine murs, ralentissement et zones de feu.<br>Tu décides quand lancer chaque assaut.</div>' +
     (record ? '<div class="record">🏆 Record : vague ' + record + '</div>' : '') +
     (save ? '<button id="btnReprendre">▶ REPRENDRE · VAGUE ' + (save.vague + 1) + '</button>' : '') +
     '<button id="btnJouer"' + (save ? ' class="secondaire"' : '') + '>' + (save ? 'NOUVELLE PARTIE' : 'JOUER') + '</button>';
@@ -1460,7 +1540,7 @@ function reprendrePartie() {
   document.getElementById('btnSon').textContent = son ? '🔊' : '🔇';
   tours = d.tours.map(t => {
     const [x, y] = centreCase(t.c, t.r);
-    return { type: t.type, c: t.c, r: t.r, x, y, niveau: t.niveau, ...(TOURS[t.type].mur ? { pv: Math.min(TOURS[t.type].pv, Math.max(1, t.pv || TOURS[t.type].pv)) } : {}), recharge: 0, angle: -Math.PI / 2, recul: 0 };
+    return { type: t.type, c: t.c, r: t.r, x, y, niveau: t.niveau, priorite: t.priorite || 'premier', priorite: t.priorite || 'premier', ...(TOURS[t.type].mur ? { pv: Math.min(TOURS[t.type].pv, Math.max(1, t.pv || TOURS[t.type].pv)) } : {}), recharge: 0, angle: -Math.PI / 2, recul: 0 };
   });
   zombies = []; projectiles = []; eclairs = []; textes = [];
   particules = []; morts = []; secousse = 0;
@@ -1508,6 +1588,7 @@ construireShop();
 redimensionner();
 setTimeout(redimensionner, 100);   // iOS ajuste parfois la hauteur au chargement
 ecranTitre();
+dessiner();
 requestAnimationFrame(boucle);
 </script>
 </body>
