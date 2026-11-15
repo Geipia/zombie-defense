@@ -2,7 +2,7 @@
 const CACHE = 'zombie-defense-v13';   // v13 : murs destructibles sur le chemin
 const FICHIERS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FICHIERS)));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FICHIERS.map((url) => new Request(url, { cache: 'reload' })))));
   self.skipWaiting();
 });
 self.addEventListener('activate', (e) => {
