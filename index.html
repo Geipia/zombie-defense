@@ -485,8 +485,8 @@
         </li>
         <li>
           Les murs détournent l'attention. Les canons frappent les groupes, le
-          givre ralentit, les gardes bloquent au contact. Les unités restent
-          dans ton camp.
+          givre ralentit, les gardes bloquent au contact. Gardes et archères
+          poursuivent les zombies au-delà des ponts, jusqu'au fond du cimetière.
         </li>
         <li>
           Tous les renforts ont une durée de vie. Ils repartent entre deux
@@ -507,7 +507,7 @@
     </dialog>
     <dialog id="welcome">
       <div class="sigil">♜ ♛ ♜</div>
-      <span class="tag">NOUVELLE ARÈNE · V15</span>
+      <span class="tag">COMBAT PLUS VIF · V16</span>
       <h2>Les Trois<br />Couronnes</h2>
       <p>
         Deux princesses. Un roi à protéger.<br />Compose ton deck, laisse monter
@@ -539,7 +539,10 @@
         MAX_ELIXIR = 10,
         SECONDES_ELIXIR = 2.4,
         MAX_RENFORTS = 14,
-        NIVEAU_MAX = 5;
+        NIVEAU_MAX = 5,
+        // Tirs 35 % plus rapprochés, dégâts par coup proportionnés : DPS conservés.
+        RYTHME_TIR = 0.65,
+        LIMITE_MARCHE = 22; // les troupes peuvent poursuivre jusqu'au fond du cimetière
       const CLE_PROFIL = "zd_royale_profil_v15",
         CLE_PARTIE = "zd_royale_partie_v15";
       const CARTES = {
@@ -1010,13 +1013,14 @@
             y: a.y,
             tx: z.x,
             ty: z.y,
-            life: 0.14,
-            max: 0.14,
+            life: 0.08,
+            max: 0.08,
             c: d.gel ? "#a1e6ff" : d.chaine ? "#d0b5ff" : "#f3d49c",
           });
         if (d.zone) {
           for (const v of jeu.ennemis)
-            if (v.pv > 0 && distance(v, z) < d.zone) degats(v, a.dmg);
+            if (v.pv > 0 && distance(v, z) < d.zone)
+              degats(v, a.dmg * RYTHME_TIR);
           effet(z.x, z.y, "#f3ad63", 12);
         } else if (d.chaine) {
           const autres = jeu.ennemis
@@ -1024,7 +1028,7 @@
             .sort((a, b) => distance(a, z) - distance(b, z))
             .slice(0, d.chaine - 1);
           for (const v of [z, ...autres]) {
-            degats(v, a.dmg);
+            degats(v, a.dmg * RYTHME_TIR);
             if (fx.length < 170)
               fx.push({
                 trait: true,
@@ -1032,13 +1036,13 @@
                 y: z.y,
                 tx: v.x,
                 ty: v.y,
-                life: 0.22,
-                max: 0.22,
+                life: 0.1,
+                max: 0.1,
                 c: "#d0b5ff",
               });
           }
         } else {
-          degats(z, a.dmg);
+          degats(z, a.dmg * RYTHME_TIR);
           if (d.gel) z.lent = 2;
         }
       }
@@ -1056,7 +1060,7 @@
         for (const t of jeu.tours) {
           if (t.pv <= 0) continue;
           t.cd -= dt;
-          t.recul = Math.max(0, (t.recul || 0) - dt * 5);
+          t.recul = Math.max(0, (t.recul || 0) - dt * 10);
           const range = t.type === "roi" ? 165 : 168;
           const z = jeu.ennemis
             .filter((z) => z.pv > 0 && distance(t, z) < range)
@@ -1064,14 +1068,14 @@
           if (z && t.cd <= 0) {
             t.dmg = t.type === "roi" ? 26 : 19;
             tirer(t, z, {});
-            t.cd = t.type === "roi" ? 0.95 : 0.85;
+            t.cd = (t.type === "roi" ? 0.95 : 0.85) * RYTHME_TIR;
           }
         }
         for (const a of jeu.allies) {
           const d = CARTES[a.carte];
           a.life -= dt;
           a.cd -= dt;
-          a.recul = Math.max(0, a.recul - dt * 5);
+          a.recul = Math.max(0, a.recul - dt * 10);
           if (a.life <= 0) a.pv = 0;
           if (a.pv <= 0) continue;
           const ennemis = jeu.ennemis
@@ -1083,13 +1087,13 @@
           if (dist <= d.portee + z.r) {
             if (a.cd <= 0) {
               tirer(a, z, d);
-              a.cd = d.cadence;
+              a.cd = d.cadence * RYTHME_TIR;
             }
           } else if (d.type === "troupe") {
             const pas = d.vitesse * dt;
             a.x += Math.sign(z.x - a.x) * Math.min(Math.abs(z.x - a.x), pas);
             a.y = Math.max(
-              DEBUT_CAMP + 14,
+              LIMITE_MARCHE,
               a.y + Math.sign(z.y - a.y) * Math.min(Math.abs(z.y - a.y), pas),
             );
           }
@@ -1275,7 +1279,9 @@
             "</small><small>" +
             Math.round(d.pv * facteur(k)) +
             " PV · " +
-            (d.degats ? Math.round(d.degats * facteur(k)) + " dégâts · " : "") +
+            (d.degats
+              ? Math.round(d.degats * facteur(k) * RYTHME_TIR) + " dégâts · "
+              : "") +
             d.duree +
             " s</small>";
           row.append(text);
