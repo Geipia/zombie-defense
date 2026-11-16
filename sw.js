@@ -1,5 +1,5 @@
 /* Zombie Defense - service worker : le jeu marche hors connexion une fois chargé */
-const CACHE = 'zombie-defense-v14';   // v14 : refonte nocturne et préparation tactique
+const CACHE = 'zombie-defense-v15';   // v15 : arène des trois couronnes et cartes
 const FICHIERS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FICHIERS.map((url) => new Request(url, { cache: 'reload' })))));
